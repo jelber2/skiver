@@ -25,16 +25,11 @@ SOFTWARE.
 */
 
 use crate::types::*;
-//use needletail::parse_fastx_file;
 
-
-/**
- * @brief A fast hash function for k-mer represented using 64-bit integer
- * Adopted from https://github.com/bluenote-1577/sylph/blob/main/src/seeding.rs
- */
 #[inline]
-pub fn mm_hash64(kmer: u64) -> u64 {
-    let mut key = kmer;
+pub fn mm_hash64_masked(kmer: u64, mask: u64) -> u64 {
+    //TODO this is bugged. Fix after release
+    let mut key = kmer & mask;
     key = !key.wrapping_add(key << 21); // key = (key << 21) - key - 1;
     key = key ^ key >> 24;
     key = (key.wrapping_add(key << 3)).wrapping_add(key << 8); // key * 265
@@ -46,361 +41,111 @@ pub fn mm_hash64(kmer: u64) -> u64 {
 }
 
 
-/**
- * @brief Class to compute the seeds for a given sequence
- */
-pub enum SketchingMethod {
-    Minimizer { window_size: usize },
-    FracMinHash { fraction: f64 },
-    MaskedFracMinHash { fraction: f64, mask_size: usize },
+pub fn decode(byte: u64) -> u8 {
+    if byte == 0 {
+        return b'A';
+    } else if byte == 1 {
+        return b'C';
+    } else if byte == 2 {
+        return b'G';
+    } else if byte == 3 {
+        return b'T';
+    } else {
+        panic!("decoding failed")
+    }
+}
+pub fn print_string(kmer: u64, k: usize) {
+    let mut bytes = vec![];
+    let mask = 3;
+    for i in 0..k {
+        let val = kmer >> 2 * i;
+        let val = val & mask;
+        bytes.push(decode(val));
+    }
+    dbg!(std::str::from_utf8(&bytes.into_iter().rev().collect::<Vec<u8>>()).unwrap());
+}
+#[inline]
+fn _position_min<T: Ord>(slice: &[T]) -> Option<usize> {
+    slice
+        .iter()
+        .enumerate()
+        .max_by(|(_, value0), (_, value1)| value1.cmp(value0))
+        .map(|(idx, _)| idx)
 }
 
-pub struct SequencesSketch {
+pub fn fmh_seeds_masked(
+    string: &[u8],
+    kmer_vec: &mut Vec<u64>,
+    c: usize,
     k: usize,
-    method: SketchingMethod,
-    hash_fn: Option<fn(u64) -> u64>,
-}
+    mask: u64,
+    bidirectional: bool,
+) {
+    type MarkerBits = u64;
+    if string.len() < k {
+        return;
+    }
 
-impl SequencesSketch {
-    pub fn new(k: usize, method: SketchingMethod, hash_fn: Option<fn(u64) -> u64>) -> Self {
-        if hash_fn.is_none() {
-            SequencesSketch { k, method, hash_fn: Some(mm_hash64) }
+    let marker_k = k;
+    let mut rolling_kmer_f_marker: MarkerBits = 0;
+    let mut rolling_kmer_r_marker: MarkerBits = 0;
+
+    let marker_reverse_shift_dist = 2 * (marker_k - 1);
+    let marker_mask = MarkerBits::MAX >> (std::mem::size_of::<MarkerBits>() * 8 - 2 * marker_k);
+    let marker_rev_mask = !(3 << (2 * marker_k - 2));
+    let len = string.len();
+    //    let threshold = i64::MIN + (u64::MAX / (c as u64)) as i64;
+    //    let threshold_marker = i64::MIN + (u64::MAX / sketch_params.marker_c as u64) as i64;
+
+    let threshold_marker = u64::MAX / (c as u64);
+    for i in 0..marker_k - 1 {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+        //        let nuc_f = KmerEnc::encode(string[i]
+        let nuc_r = 3 - nuc_f;
+        rolling_kmer_f_marker <<= 2;
+        rolling_kmer_f_marker |= nuc_f;
+        //        rolling_kmer_r = KmerEnc::rc(rolling_kmer_f, k);
+        rolling_kmer_r_marker >>= 2;
+        rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+    }
+    for i in marker_k-1..len {
+        let nuc_byte = string[i] as usize;
+        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
+        let nuc_r = 3 - nuc_f;
+        rolling_kmer_f_marker <<= 2;
+        rolling_kmer_f_marker |= nuc_f;
+        rolling_kmer_f_marker &= marker_mask;
+        rolling_kmer_r_marker >>= 2;
+        rolling_kmer_r_marker &= marker_rev_mask;
+        rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+        //        rolling_kmer_r &= max_mask;
+        //        KmerEnc::print_string(rolling_kmer_f, k);
+        //        KmerEnc::print_string(rolling_kmer_r, k);
+        //
+
+        /*
+        let canonical_marker = rolling_kmer_f_marker < rolling_kmer_r_marker;
+        let canonical_kmer_marker = if canonical_marker {
+            rolling_kmer_f_marker
         } else {
-            SequencesSketch { k, method, hash_fn }
-        }
-    }
-
-    pub fn k(&self) -> usize {
-        self.k
-    }
-
-    pub fn method(&self) -> String {
-        match self.method {
-            SketchingMethod::Minimizer { window_size } => format!("Minimizer (window size: {})", window_size),
-            SketchingMethod::FracMinHash { fraction } => format!("FracMinHash (fraction: {:.2})", fraction),
-            SketchingMethod::MaskedFracMinHash { fraction, mask_size } => format!("MaskedFracMinHash (fraction: {:.2}, mask size: {})", fraction, mask_size),
-        }
-    }
-
-
-    fn extract_minimizers(&self, kmer_vec: &[u64], window_size: usize) -> Vec<u64> {
-        // [TODO] check the correctness of this function
-        // [TODO] add option to use a hash function
-
-        if kmer_vec.len() < window_size {
-            return Vec::new();
-        }
-
-        let mut minimizers = Vec::new();
-        let mut window = Vec::new();
-
-        // initialize the window
-        for i in 0..window_size {
-            window.push(kmer_vec[i]);
-        }
-        // find the minimum in the window
-        let mut min = window.iter().cloned().min().unwrap();
-        minimizers.push(min);
-
-        // slide the window
-        for i in 0..=(kmer_vec.len() - window_size - 1) {
-            // remove the first element of the window
-            let removed = window.remove(0);
-            // add the next element to the window
-            window.push(kmer_vec[i + window_size]);
-            // find the minimum in the window
-            if kmer_vec[i + window_size] < min {
-                min = kmer_vec[i + window_size];
-                minimizers.push(min);
-            } else if removed == min {
-                // if the removed element was the minimum, find the new minimum
-                min = window.iter().cloned().min().unwrap();
-                minimizers.push(min);
-            }
-        }
-
-        minimizers
-    }
-
-    fn extract_frac_min_hash(&self, kmer_vec: &[u64], fraction: f64) -> Vec<u64> {
-        // [TODO] check the correctness of this function
-        let mut seeds = Vec::new();
-
-        let hash_space = 10000 as u64;
-        let hash_threshold = (fraction * (hash_space as f64)) as u64;
-
-        for kmer in kmer_vec {
-            let mut kmer_hash = *kmer;
-            if let Some(hash_fn) = self.hash_fn {
-                kmer_hash = hash_fn(kmer_hash);
-            }
-
-            if kmer_hash % hash_space < hash_threshold {
-                seeds.push(*kmer);
-            }
-        }
-
-        seeds
-    }
-
-    fn extract_masked_frac_min_hash(&self, kmer_vec: &[u64], fraction: f64, mask_size: usize) -> Vec<u64> {
-        // FracMinHash, but the last 2*`mask_size` bits are masked out
-        // when computing the hash value
-        let mut seeds = Vec::new();
-
-        let hash_space = 10000 as u64;
-        let hash_threshold = (fraction * (hash_space as f64)) as u64;
-
-        let mask = (1 << (2 * mask_size)) - 1;
-
-        for kmer in kmer_vec {
-            let mut kmer_hash = *kmer & !mask;
-            if let Some(hash_fn) = self.hash_fn {
-                kmer_hash = hash_fn(kmer_hash);
-            }
-
-            if kmer_hash % hash_space < hash_threshold {
-                seeds.push(*kmer);
-            }
-        }
-
-        seeds
-    }
-
-    pub fn sketch_kmer_vec(&self, kmer_vec: &Vec<u64>) -> Vec<u64> {
-        let seeds = match self.method {
-            SketchingMethod::Minimizer { window_size } => {
-                self.extract_minimizers(kmer_vec, window_size)
-            }
-            SketchingMethod::FracMinHash { fraction } => {
-                self.extract_frac_min_hash(kmer_vec, fraction)
-            }
-            SketchingMethod::MaskedFracMinHash { fraction, mask_size } => {
-                self.extract_masked_frac_min_hash(kmer_vec, fraction, mask_size)
-            }
+            rolling_kmer_r_marker
         };
+        let hash_marker = mm_hash64(canonical_kmer_marker);
 
-        seeds
+        if hash_marker < threshold_marker {
+            kmer_vec.push(hash_marker as u64);
+        }
+        */
+
+        let hash_f = mm_hash64_masked(rolling_kmer_f_marker, mask);
+        if hash_f < threshold_marker {
+            kmer_vec.push(rolling_kmer_f_marker as u64);
+        }
+        if bidirectional {
+            let hash_r = mm_hash64_masked(rolling_kmer_r_marker, mask);
+            if hash_r < threshold_marker {
+                kmer_vec.push(rolling_kmer_r_marker as u64);
+            }
+        }
     }
-
 }
-
-
-/**
- * @brief Compute the seeds for a given string
- * Adopted from https://github.com/bluenote-1577/sylph/blob/main/src/seeding.rs
- * 
- * @param string The string to compute the seeds for
- * @param kmer_vec The vector to store the seeds
- * @param k The length of the k-mers
- */
-pub fn seq_to_canonical_kmer_vec(
-    string: &[u8],
-    k: usize
-) -> Vec<u64> {
-    // If the string is shorter than the k-mer length, return
-    if string.len() < k {
-        return Vec::new();
-    }
-
-    let mut kmer_vec: Vec<u64> = Vec::with_capacity(string.len() - k + 1);
-
-    let mut rolling_kmer_f: u64 = 0;
-    let mut rolling_kmer_r: u64 = 0;
-
-    let marker_reverse_shift_dist = 2 * (k - 1);
-    let marker_mask = (1 << (2*k)) - 1;
-    let len = string.len();
-
-    // Init with the first k-1 nucleotides
-    for i in 0..k - 1 {
-        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        let nuc_r = 3 - nuc_f;
-
-        // update the k-mers
-        rolling_kmer_f = ((rolling_kmer_f << 2) & marker_mask) | nuc_f;
-        rolling_kmer_r = (rolling_kmer_r >> 2) | (nuc_r << marker_reverse_shift_dist);
-    }
-
-    // Iterate through the rest of the string
-    for i in k-1..len {
-        let nuc_byte = string[i] as usize;
-        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
-        let nuc_r = 3 - nuc_f;
-
-        // update the k-mers
-        rolling_kmer_f = ((rolling_kmer_f << 2) & marker_mask) | nuc_f;
-        rolling_kmer_r = (rolling_kmer_r >> 2) | (nuc_r << marker_reverse_shift_dist);
-
-        // Determine the canonical k-mer
-        let canonical_kmer_marker = if rolling_kmer_f < rolling_kmer_r {
-            rolling_kmer_f
-        } else {
-            rolling_kmer_r
-        };
-        kmer_vec.push(canonical_kmer_marker as u64);
-    }
-
-    kmer_vec
-}
-
-
-/**
- * @brief Compute the k-mer vector for a given string
- * @returns two vectors: the k-mer vector and the reverse complement k-mer vector
- * 
- * @param string The string to compute the k-mer vector for
- * @param k The length of the k-mers
- */
-pub fn seq_to_bidirectional_kmer_vec(
-    string: &[u8],
-    k: usize
-) -> (Vec<u64>, Vec<u64>) {
-    // If the string is shorter than the k-mer length, return
-    if string.len() < k {
-        return (Vec::new(), Vec::new());
-    }
-
-    let mut kmer_vec: Vec<u64> = Vec::with_capacity(string.len() - k + 1);
-    let mut kmer_vec_rev: Vec<u64> = Vec::with_capacity(string.len() - k + 1);
-
-    let marker_mask = (1 << (2*k)) - 1;
-    let len = string.len();
-
-    // Init with the first k-1 nucleotides
-    let mut rolling_kmer_f: u64 = 0;
-    let mut rolling_kmer_r: u64 = 0;
-
-    for i in 0..k - 1 {
-        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        let nuc_r = 3 - nuc_f;
-
-        // update the k-mers
-        rolling_kmer_f = ((rolling_kmer_f << 2) & marker_mask) | nuc_f;
-        rolling_kmer_r = (rolling_kmer_r >> 2) | (nuc_r << (2 * (k - 1)));
-    }
-
-    // Iterate through the rest of the string
-    for i in k-1..len {
-        let nuc_byte = string[i] as usize;
-        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
-        let nuc_r = 3 - nuc_f;
-
-        // update the k-mers
-        rolling_kmer_f = ((rolling_kmer_f << 2) & marker_mask) | nuc_f;
-        rolling_kmer_r = (rolling_kmer_r >> 2) | (nuc_r << (2 * (k - 1)));
-
-        // push the k-mers to the vector
-        kmer_vec.push(rolling_kmer_f);
-        kmer_vec_rev.push(rolling_kmer_r);
-    }
-
-    // reverse the reverse complement k-mer vector
-    kmer_vec_rev.reverse();
-
-    (kmer_vec, kmer_vec_rev)
-}
-
-/**
- * @brief Compute the canonical k-mer vector for a given string
- * 
- * @param string The string to compute the k-mer vector for
- * @param k The length of the k-mers
- * @returns A vector of canonical k-mers
- */
-pub fn seq_to_unidirectional_kmer_vec(
-    string: &[u8],
-    k: usize
-) -> Vec<u64> {
-    // If the string is shorter than the k-mer length, return
-    if string.len() < k {
-        return Vec::new();
-    }
-
-    let mut kmer_vec: Vec<u64> = Vec::with_capacity(string.len() - k + 1);
-
-    let marker_mask = (1 << (2*k)) - 1;
-    let len = string.len();
-
-    // Init with the first k-1 nucleotides
-    let mut rolling_kmer: u64 = 0;
-
-    for i in 0..k - 1 {
-        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-
-        // update the k-mers
-        rolling_kmer = ((rolling_kmer << 2) & marker_mask) | nuc_f;
-    }
-
-    // Iterate through the rest of the string
-    for i in k-1..len {
-        let nuc_byte = string[i] as usize;
-        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
-
-        // update the k-mers
-        rolling_kmer = ((rolling_kmer << 2) & marker_mask) | nuc_f;
-
-        // push the k-mers to the vector
-        kmer_vec.push(rolling_kmer);
-    }
-
-    kmer_vec
-}
-
-/**
- * @brief Convert a k-mer string to a u64 index
- */
-pub fn kmer_to_index(kmer: &str) -> u64 {
-    // use BYTE_TO_SEQ to convert the k-mer to a u64
-    let mut res: u64 = 0;
-    for b in kmer.bytes() {
-        let nuc = BYTE_TO_SEQ[b as usize] as u64;
-        res = (res << 2) | nuc;
-    }
-    res
-}
-
-/**
- * @brief Convert a k-mer index to a string
- * 
- * @param kmer The k-mer index
- * @param k The length of the k-mer
- * @returns The k-mer string
- */
-pub fn index_to_kmer(kmer: u64, k: usize) -> String {
-    // use SEQ_TO_BYTE to convert the k-mer to a string
-    let mut kmer_str = String::new();
-    for i in (0..k).rev() {
-        let nuc = kmer >> (i * 2) & 3;
-        kmer_str.push(SEQ_TO_BYTE[nuc as usize] as char);
-    }
-    kmer_str
-}
-
-/**
- * @brief Print the k-mer out
- */
-pub fn print_kmer(kmer: u64, k: usize) {
-    // use SEQ_TO_BYTE to convert the k-mer to a string
-    let kmer_str = index_to_kmer(kmer, k);
-    print!("{}", kmer_str);
-}
-
-
-/**
- * @brief Print the k-mer vector
- * 
- * @param kmer_vec The k-mer vector to print
- * @param k The length of the k-mers
- */
-pub fn print_kmer_vec(kmer_vec: &Vec<u64>, k: usize) {
-    let kmer_str_vec: Vec<String> = kmer_vec.iter().map(|&kmer| {
-        // use SEQ_TO_BYTE to convert the k-mer to a string
-        index_to_kmer(kmer, k)
-    }).collect();
-    println!("{:?}", kmer_str_vec);
-}
-
-
-
-

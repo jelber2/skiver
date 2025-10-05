@@ -237,10 +237,30 @@ impl KVmerSet {
     
 }
 
+pub fn extract_markers_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) {
+    #[cfg(any(target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("avx2") {
+            use crate::avx2_seeding::*;
+            unsafe {
+                extract_markers_avx2_masked(string, kmer_vec, c, k, mask, bidirectional);
+            }
+        } else {
+            fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
+    }
+}
+
 pub fn add_file_to_kvmer_set(
     kvmer: &mut KVmerSet,
     seq_file: &str,
-    seq_sketch: &SequencesSketch,
+    c: usize,
+    k: usize,
+    mask: i64,
     bidirectional: bool,
 ) {
     let reader = parse_fastx_file(&seq_file);
@@ -255,12 +275,9 @@ pub fn add_file_to_kvmer_set(
             match record {
                 Ok(record) => {
                     let seq = record.seq();
-                    let (kmer_vec, kmer_vec_rev) = seq_to_bidirectional_kmer_vec(seq.as_ref(), seq_sketch.k());
-                    kvmer.add_seed_vector(&seq_sketch.sketch_kmer_vec(&kmer_vec));
-                    if bidirectional {
-                        // Also sketch the reverse complement if bidirectional
-                        kvmer.add_seed_vector(&seq_sketch.sketch_kmer_vec(&kmer_vec_rev));
-                    }
+                    let mut kmer_vec: Vec<u64> = Vec::new();
+                    extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, k, mask, bidirectional);
+                    kvmer.add_seed_vector(&kmer_vec);
                 }
                 Err(e) => {
                     warn!("Error reading record: {}", e);
