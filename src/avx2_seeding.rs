@@ -32,9 +32,9 @@ use crate::types::*;
  */
 #[inline]
 #[target_feature(enable = "avx2")]
-pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: i64) -> __m256i {
+pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: i64) -> __m256i { unsafe {
     // mask the kmer so that only the masked bits are used in the hash
-    let mut mask_vec = _mm256_set_epi64x(mask, mask, mask, mask);
+    let mask_vec = _mm256_set_epi64x(mask, mask, mask, mask);
     let masked_kmer = _mm256_and_si256(kmer, mask_vec);
 
     let mut key = masked_kmer;
@@ -60,16 +60,16 @@ pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: i64) -> __m256i {
     key = _mm256_add_epi64(key, s6);
 
     return key;
-}
+}}
 
 /**
  * Shift each 64-bit lane in a __m256i by 2*k - 2 bits to the left.
  * This is used to update the reverse kmer in the rolling hash.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i {
+pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
     // shift left by 2*k - 2
-    let mut shifted = match k {
+    let shifted = match k {
         3 => { _mm256_slli_epi64(kmer, 4) }
         4 => { _mm256_slli_epi64(kmer, 6) }
         5 => { _mm256_slli_epi64(kmer, 8) }
@@ -103,14 +103,14 @@ pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i {
         _ => { panic!() }
     };
     return shifted;
-}
+}}
 
 /**
  * Extract kmers using FracMinHash from a DNA string using AVX2 instructions.
  * The k-mers are extracted from both the forward and reverse strands.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) {
+pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) { unsafe {
     if string.len() <= k {
         return;
     }
@@ -272,4 +272,4 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>
             }
         }
     }
-}
+}}

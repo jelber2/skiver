@@ -1,7 +1,7 @@
 use log::warn;
 use needletail::parse_fastx_file;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{seeding::*, types::EditOperation};
 
@@ -19,7 +19,7 @@ pub struct KVmerSet {
 
 impl KVmerSet {
     pub fn new(key_size: u8, value_size: u8) -> Self {
-        assert!(key_size + value_size <= 32, "Key size and value size must sum to at most 32");
+        assert!(key_size + value_size <= 32, "Currently, we only support k + v <= 32.");
 
         let v_mask = (1 << (value_size * 2)) - 1;
         let k_mask = ((1 << (key_size * 2)) - 1) << (value_size * 2);
@@ -35,7 +35,10 @@ impl KVmerSet {
 
     
 
-    fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
+
+    
+
+    pub fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
         // get all the values with edit distance 1 from the input value
         
         let mut neighbors: HashMap<u64, EditOperation> = HashMap::new();
@@ -81,6 +84,27 @@ impl KVmerSet {
 
         neighbors
 
+    }
+
+    pub fn kmer_to_string(&self, kmer: u64) -> String {
+        // for debugging: convert a kmer to a string
+
+        let mut s = Vec::with_capacity((self.key_size + self.value_size) as usize);
+        for i in (0..self.value_size).rev() {
+            let shift = i * 2;
+            let base = ((kmer >> shift) & 0b11) as usize;
+            s.push(crate::types::SEQ_TO_BYTE[base]);
+        }
+        String::from_utf8(s).unwrap()
+    }
+
+    pub fn show_neighbors(&self, value: u64) {
+        // for debugging: print all the neighbors of a value
+
+        let neighbors = self._get_neighbors(value);
+        for (neighbor, op) in neighbors {
+            println!("Neighbor: {}, Operation: {:?}", self.kmer_to_string(neighbor), op);
+        }
     }
 
 
@@ -132,46 +156,16 @@ impl KVmerSet {
     }
 
 
-    pub fn consistency_index(&self, threshold: u32) -> f64 {
-        // for each key, see by how much the values agree
-        let mut total_majority = 0;
-        let mut total_values = 0;
+    pub fn estimate_error_rate(&self, threshold: u32) -> f64 {
+        // record the keys and values for output
+        let mut keys: Vec<u64> = Vec::new();
+        let mut consensus_values: Vec<u64> = Vec::new();
 
-        for (_key, value_map) in &self.key_value_map {
-            let mut max_count = 0;
-            let mut sum_count = 0;
+        // count the number of consensus and error kmers
+        let mut consensus_counts: Vec<u32> = Vec::new();
+        let mut error_counts: Vec<u32> = Vec::new();
 
-            //println!("Value map: {:?}", value_map);
-
-            for (_value, count) in value_map {
-                sum_count += *count;
-                if *count > max_count {
-                    max_count = *count;
-                }
-            }
-
-            if sum_count <= threshold {
-                continue;
-            }
-
-            total_majority += max_count;
-            total_values += sum_count;
-        }
-
-        if total_values == 0 {
-            0.0
-        } else {
-            total_majority as f64 / total_values as f64
-        }
-    }
-
-    pub fn error_profile(&self, threshold: u32) -> HashMap<EditOperation, f64> {
-        // for each key, compute the error rate as 1 - (max_count / total_count)
-        let mut error_profile: HashMap<EditOperation, f64> = HashMap::new();
-        let mut num_errors: u32 = 0;
-        let mut num_consensus: u32 = 0;
-
-        for (_key, value_map) in &self.key_value_map {
+        for (key, value_map) in &self.key_value_map {
             let mut max_count = 0;
             let mut sum_count = 0;
             let mut max_value: u64 = 0;
@@ -190,51 +184,29 @@ impl KVmerSet {
                 continue;
             }
 
-            num_consensus += max_count;
-
             // for each non-consensus value, determine if it is a substitution, insertion, or deletion
             // relative to the consensus value
             let neighbors = self._get_neighbors(max_value);
+            let mut num_neighbors = 0;
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
             for (value, count) in value_map {
-                if *value != max_value {
-                    if let Some(op) = neighbors.get(value) {
-                        match op {
-                            EditOperation::SUBSTITUTION => {
-                                error_profile.entry(EditOperation::SUBSTITUTION)
-                                    .and_modify(|e| *e += *count as f64)
-                                    .or_insert(*count as f64);
-                            },
-                            EditOperation::INSERTION => {
-                                error_profile.entry(EditOperation::INSERTION)
-                                    .and_modify(|e| *e += *count as f64)
-                                    .or_insert(*count as f64);
-                            },
-                            EditOperation::DELETION => {
-                                error_profile.entry(EditOperation::DELETION)
-                                    .and_modify(|e| *e += *count as f64)
-                                    .or_insert(*count as f64);
-                            },
-                            EditOperation::AMBIGUOUS => {},
-                        }
-                    }
-                    
-                    num_errors += *count;
+                if *value != max_value && neighbors.contains_key(value) {
+                    num_neighbors += *count;
                 }
             }
+
+            // update the vectors
+            keys.push(*key);
+            consensus_values.push(max_value);
+            consensus_counts.push(max_count);
+            error_counts.push(num_neighbors);
+
         }
 
-        // normalize the error profile
-        for (_op, count) in error_profile.iter_mut() {
-            *count /= (num_errors + num_consensus) as f64;
-        }
 
-        error_profile
+        0.
     }
 
-    
-
-    
 }
 
 pub fn extract_markers_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) {
