@@ -64,3 +64,16 @@ pub enum EditOperation {
     DELETION,
     AMBIGUOUS, // when multiple operations can lead to the same neighbor
 }
+
+
+pub struct KVmerStats {
+    pub k: u8,
+    pub v: u8,
+
+    pub keys: Vec<u64>,
+    pub consensus_values: Vec<u64>,
+
+    pub consensus_counts: Vec<u32>,
+    pub error_counts: Vec<u32>,
+    pub total_counts: Vec<u32>,
+}

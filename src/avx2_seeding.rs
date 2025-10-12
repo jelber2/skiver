@@ -70,6 +70,7 @@ pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: i64) -> __m256i { unsafe {
 pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
     // shift left by 2*k - 2
     let shifted = match k {
+        
         3 => { _mm256_slli_epi64(kmer, 4) }
         4 => { _mm256_slli_epi64(kmer, 6) }
         5 => { _mm256_slli_epi64(kmer, 8) }
@@ -100,6 +101,9 @@ pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
         30 => { _mm256_slli_epi64(kmer, 58) }
         31 => { _mm256_slli_epi64(kmer, 60) }
         32 => { _mm256_slli_epi64(kmer, 62) }
+        
+        //21 => { _mm256_slli_epi64(kmer, 40) }
+        //31 => { _mm256_slli_epi64(kmer, 60) }
         _ => { panic!() }
     };
     return shifted;

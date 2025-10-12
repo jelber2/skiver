@@ -3,12 +3,13 @@ use needletail::parse_fastx_file;
 
 use std::collections::HashMap;
 
-use crate::{seeding::*, types::EditOperation};
+use crate::{seeding::*, types::*};
 
 
 pub struct KVmerSet {
     pub key_size: u8,
     pub value_size: u8,
+    pub kv_size: u8,
     pub key_value_map: HashMap<u64, HashMap<u64, u32>>,
 
     // utilities to extract key and value from a kmer hash
@@ -27,15 +28,12 @@ impl KVmerSet {
         KVmerSet {
             key_size,
             value_size,
+            kv_size: key_size + value_size,
             key_value_map: HashMap::new(),
             key_mask: k_mask,
             value_mask: v_mask,
         }
     }
-
-    
-
-
     
 
     pub fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
@@ -58,6 +56,10 @@ impl KVmerSet {
 
             // Indels
             for &b in &bases {
+                if shift == 0 && b == (value >> shift) & 0b11 {
+                    continue; // skip the original base for the first position
+                }
+                
                 let left_part = (value >> (shift + 2)) << ((shift + 2));
                 let right_part = value & ((1 << (shift + 2)) - 1);
                 let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
@@ -68,7 +70,8 @@ impl KVmerSet {
                         }
                     )
                     .or_insert(EditOperation::INSERTION);
-
+                
+                
                 let right_part = value & ((1 << shift) - 1);
                 let neighbor_delete = left_part | (right_part << 2) | b;
                 neighbors.entry(neighbor_delete)
@@ -78,7 +81,9 @@ impl KVmerSet {
                         }
                     )
                     .or_insert(EditOperation::DELETION);
+                
             }
+                    
             
         }
 
@@ -86,11 +91,25 @@ impl KVmerSet {
 
     }
 
-    pub fn kmer_to_string(&self, kmer: u64) -> String {
+
+
+    pub fn to_value_string(&self, kmer: u64) -> String {
         // for debugging: convert a kmer to a string
 
-        let mut s = Vec::with_capacity((self.key_size + self.value_size) as usize);
+        let mut s = Vec::with_capacity(self.value_size as usize);
         for i in (0..self.value_size).rev() {
+            let shift = i * 2;
+            let base = ((kmer >> shift) & 0b11) as usize;
+            s.push(crate::types::SEQ_TO_BYTE[base]);
+        }
+        String::from_utf8(s).unwrap()
+    }
+
+    pub fn to_key_string(&self, kmer: u64) -> String {
+        // for debugging: convert a kmer to a string
+
+        let mut s = Vec::with_capacity(self.key_size as usize);
+        for i in (0..self.key_size).rev() {
             let shift = i * 2;
             let base = ((kmer >> shift) & 0b11) as usize;
             s.push(crate::types::SEQ_TO_BYTE[base]);
@@ -103,7 +122,7 @@ impl KVmerSet {
 
         let neighbors = self._get_neighbors(value);
         for (neighbor, op) in neighbors {
-            println!("Neighbor: {}, Operation: {:?}", self.kmer_to_string(neighbor), op);
+            println!("Neighbor: {}, Operation: {:?}", self.to_value_string(neighbor), op);
         }
     }
 
@@ -111,12 +130,62 @@ impl KVmerSet {
 
     pub fn add_seed_vector(&mut self, seed_vec: &[u64]) {
         for &kmer in seed_vec {
-            let key = (kmer & self.key_mask) >> self.value_size;
+            let key = (kmer & self.key_mask) >> (self.value_size * 2);
             let value = kmer & self.value_mask;
 
             let entry = self.key_value_map.entry(key).or_insert_with(HashMap::new);
             let count = entry.entry(value).or_insert(0);
             *count += 1;
+        }
+    }
+
+
+    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, bidirectional: bool) {
+        // extract sketched kv-mers from the given sequence string
+        #[cfg(any(target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                use crate::avx2_seeding::*;
+                unsafe {
+                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask as i64, bidirectional);
+                }
+            } else {
+                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, bidirectional);
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, bidirectional);
+        }
+    }
+
+    pub fn add_file_to_kvmer_set(
+        &mut self,
+        seq_file: &str,
+        c: usize,
+        bidirectional: bool,
+    ) {
+        let reader = parse_fastx_file(&seq_file);
+        //println!("Reading file: {}", seq_file);
+        if !reader.is_ok() {
+            //println!("Not OK Reading file: {}", seq_file);
+            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
+        } else {
+            //println!("Reading file: {}", seq_file);
+            let mut reader = reader.unwrap();
+            while let Some(record) = reader.next() {
+                match record {
+                    Ok(record) => {
+                        let seq = record.seq();
+                        let mut kmer_vec: Vec<u64> = Vec::new();
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, bidirectional);
+                        self.add_seed_vector(&kmer_vec);
+                    }
+                    Err(e) => {
+                        warn!("Error reading record: {}", e);
+                    }
+                }
+            }
         }
     }
 
@@ -155,8 +224,7 @@ impl KVmerSet {
         (key_containment, key_value_containment)
     }
 
-
-    pub fn estimate_error_rate(&self, threshold: u32) -> f64 {
+    pub fn get_stats(&self, threshold: u32) -> KVmerStats {
         // record the keys and values for output
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
@@ -164,6 +232,7 @@ impl KVmerSet {
         // count the number of consensus and error kmers
         let mut consensus_counts: Vec<u32> = Vec::new();
         let mut error_counts: Vec<u32> = Vec::new();
+        let mut total_counts: Vec<u32> = Vec::new();
 
         for (key, value_map) in &self.key_value_map {
             let mut max_count = 0;
@@ -187,6 +256,9 @@ impl KVmerSet {
             // for each non-consensus value, determine if it is a substitution, insertion, or deletion
             // relative to the consensus value
             let neighbors = self._get_neighbors(max_value);
+            if neighbors.contains_key(&max_value) {
+                continue;
+            }
             let mut num_neighbors = 0;
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
             for (value, count) in value_map {
@@ -200,11 +272,80 @@ impl KVmerSet {
             consensus_values.push(max_value);
             consensus_counts.push(max_count);
             error_counts.push(num_neighbors);
-
+            total_counts.push(sum_count);
         }
 
+        KVmerStats {
+            k: self.key_size,
+            v: self.value_size,
+            keys,
+            consensus_values,
+            consensus_counts,
+            error_counts,
+            total_counts,
+        }
+    /*
 
-        0.
+        if total_counts.is_empty() {
+            0.0
+        } else {
+            // compute the overall error rate
+            let p_0: f64 = consensus_counts.iter().sum::<u32>() as f64 / total_counts.iter().sum::<u32>() as f64;
+
+            let p_1: f64 = error_counts.iter().sum::<u32>() as f64 / total_counts.iter().sum::<u32>() as f64;
+
+            let mut p_1_over_p_0 = Vec::new();
+            for i in 0..consensus_counts.len() {
+                p_1_over_p_0.push(error_counts[i] as f64 / (consensus_counts[i] as f64 * (self.value_size as f64)));
+            }
+
+            //println!("{:?}", p_1_over_p_0);
+
+            // p_1 / p_0 estimator
+            //let error_rate = p_1 / p_0 / (self.value_size as f64);
+
+            // p_0 estimator
+            //let error_rate = - p_0.ln() / self.value_size as f64;
+            println!("Number of consensus kmers: {}", consensus_counts.len());
+
+            //p_1_over_p_0.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            //let error_rate = p_1_over_p_0[p_1_over_p_0.len() / 2];// / (self.value_size as f64);
+
+            //let error_rate = p_1_over_p_0.iter().sum::<f64>() / (p_1_over_p_0.len() as f64);
+
+            
+            /*
+            let mut p_0_vec = Vec::new();
+            for i in 0..consensus_counts.len() {
+                p_0_vec.push(consensus_counts[i] as f64 / total_counts[i] as f64);
+            }
+            p_0_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let p_0_mean = p_0_vec.iter().sum::<f64>() / (p_0_vec.len() as f64);
+
+            
+
+
+            let error_rate = 1.0 - p_0_mean.powf(1.0 / self.value_size as f64);
+            */
+            
+            error_rate
+        }
+            */
+
+    }
+
+    pub fn output_stats(&self, stats: &KVmerStats) {
+        println!("Key\tConsensus_Value\tConsensus_Count\tError_Count\tTotal_Count");
+        for i in 0..stats.keys.len() {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                self.to_key_string(stats.keys[i]),
+                self.to_value_string(stats.consensus_values[i]),
+                stats.consensus_counts[i],
+                stats.error_counts[i],
+                stats.total_counts[i]
+            );
+        }
     }
 
 }
@@ -214,15 +355,18 @@ pub fn extract_markers_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, 
     {
         if is_x86_feature_detected!("avx2") {
             use crate::avx2_seeding::*;
+            println!("Using AVX2 for seeding");
             unsafe {
                 extract_markers_avx2_masked(string, kmer_vec, c, k, mask, bidirectional);
             }
         } else {
+            println!("Using normal for seeding, no AVX2 detected");
             fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
         }
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
+        println!("Using normal for seeding");
         fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
     }
 }

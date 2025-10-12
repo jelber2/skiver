@@ -1,8 +1,6 @@
 use clap::Parser;
-use sylph::cmdline::*;
-use sylph::sketch;
-use sylph::contain;
-use sylph::inspect;
+use kvmer::cmdline::*;
+use kvmer::analyze;
 
 //Use this allocator when statically compiling
 //instead of the default
@@ -22,9 +20,6 @@ fn main() {
 //    }));
     let cli = Cli::parse();
     match cli.mode {
-        Mode::Sketch(sketch_args) => sketch::sketch(sketch_args),
-        Mode::Query(contain_args) => contain::contain(contain_args, false),
-        Mode::Profile(contain_args) => contain::contain(contain_args, true),
-        Mode::Inspect(inspect_args) => inspect::inspect(inspect_args),
+        Mode::Analyze(analyze_args) => analyze::analyze(analyze_args),
     }
 }
