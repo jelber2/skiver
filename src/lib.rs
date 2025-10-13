@@ -16,14 +16,14 @@ mod tests {
 
     #[test]
     fn test_kmer_neighbors() {
-        let value = 0b11100100; // AAAA
+        let value = 0b111001000001; // AAAA
 
-        let value_length = 4;
+        let value_length = 6;
         let key_length = 5; // arbitrary
 
         let kvmer = kvmer::KVmerSet::new(key_length, value_length);
         let neighbors = kvmer._get_neighbors(value);
-        println!("Original value: {}", kvmer.kmer_to_string(value));
+        println!("Original value: {}", kvmer.to_value_string(value));
         kvmer.show_neighbors(value);
         let expected_neighbors = vec![
             0b01, // AAAAC

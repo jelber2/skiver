@@ -50,7 +50,7 @@ impl KVmerSet {
                 let current_base = (value >> shift) & 0b11;
                 if b != current_base {
                     let neighbor = (value & !(0b11 << shift)) | (b << shift);
-                    neighbors.insert(neighbor, EditOperation::SUBSTITUTION);
+                    neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
                 }
             }
 
@@ -65,23 +65,24 @@ impl KVmerSet {
                 let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
                 neighbors.entry(neighbor_insert)
                     .and_modify(|op|
-                        if *op != EditOperation::INSERTION {
+                        if *op != BASES_TO_INSERTION[b as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
-                    .or_insert(EditOperation::INSERTION);
+                    .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
                 
                 
                 let right_part = value & ((1 << shift) - 1);
                 let neighbor_delete = left_part | (right_part << 2) | b;
+                let original_base = (value >> shift) & 0b11;
                 neighbors.entry(neighbor_delete)
                     .and_modify(|op| 
-                        if *op != EditOperation::DELETION {
+                        if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
-                    .or_insert(EditOperation::DELETION);
-                
+                    .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
+
             }
                     
             
@@ -124,6 +125,43 @@ impl KVmerSet {
         for (neighbor, op) in neighbors {
             println!("Neighbor: {}, Operation: {:?}", self.to_value_string(neighbor), op);
         }
+    }
+
+    pub fn homopolymer_length(&self, key: u64, value: u64) -> u32 {
+        let mut longest_homopolymer: u32 = 1;
+        let mut current_homopolymer: u32 = 1;
+        
+        // Find the longest homopolymer at the end of the key
+        let mut last_base = key & 0b11;
+        for i in 1..self.key_size {
+            let shift = i * 2;
+            let base = (key >> shift) & 0b11;
+            if base == last_base {
+                current_homopolymer += 1;
+            } else {
+                break;
+            }
+        }
+        // Extend the homopolymer into the value
+        for i in (0..self.value_size).rev() {
+            let shift = i * 2;
+            let base = (value >> shift) & 0b11;
+            if base == last_base {
+                current_homopolymer += 1;
+            } else {
+                if current_homopolymer > longest_homopolymer {
+                    longest_homopolymer = current_homopolymer;
+                }
+                current_homopolymer = 1;
+                last_base = base;
+            }
+        }
+
+        if current_homopolymer > longest_homopolymer {
+            longest_homopolymer = current_homopolymer;
+        }
+
+        longest_homopolymer
     }
 
 
@@ -335,70 +373,18 @@ impl KVmerSet {
     }
 
     pub fn output_stats(&self, stats: &KVmerStats) {
-        println!("Key\tConsensus_Value\tConsensus_Count\tError_Count\tTotal_Count");
+        println!("Key\tConsensus_Value\tConsensus_Count\tError_Count\tTotal_Count\tHomopolymer_Length");
         for i in 0..stats.keys.len() {
             println!(
-                "{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}",
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
                 stats.consensus_counts[i],
                 stats.error_counts[i],
-                stats.total_counts[i]
+                stats.total_counts[i],
+                self.homopolymer_length(stats.keys[i], stats.consensus_values[i]),
             );
         }
     }
 
-}
-
-pub fn extract_markers_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) {
-    #[cfg(any(target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("avx2") {
-            use crate::avx2_seeding::*;
-            println!("Using AVX2 for seeding");
-            unsafe {
-                extract_markers_avx2_masked(string, kmer_vec, c, k, mask, bidirectional);
-            }
-        } else {
-            println!("Using normal for seeding, no AVX2 detected");
-            fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
-        }
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        println!("Using normal for seeding");
-        fmh_seeds_masked(string, kmer_vec, c, k, mask as u64, bidirectional);
-    }
-}
-
-pub fn add_file_to_kvmer_set(
-    kvmer: &mut KVmerSet,
-    seq_file: &str,
-    c: usize,
-    k: usize,
-    mask: i64,
-    bidirectional: bool,
-) {
-    let reader = parse_fastx_file(&seq_file);
-    //println!("Reading file: {}", seq_file);
-    if !reader.is_ok() {
-        //println!("Not OK Reading file: {}", seq_file);
-        println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
-    } else {
-        //println!("Reading file: {}", seq_file);
-        let mut reader = reader.unwrap();
-        while let Some(record) = reader.next() {
-            match record {
-                Ok(record) => {
-                    let seq = record.seq();
-                    let mut kmer_vec: Vec<u64> = Vec::new();
-                    extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, k, mask, bidirectional);
-                    kvmer.add_seed_vector(&kmer_vec);
-                }
-                Err(e) => {
-                    warn!("Error reading record: {}", e);
-                }
-            }
-        }
-    }
 }

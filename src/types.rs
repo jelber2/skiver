@@ -57,13 +57,74 @@ pub const BYTE_TO_SEQ: [u8; 256] = {
 
 pub const SEQ_TO_BYTE: [u8; 4] = [b'A', b'C', b'G', b'T'];
 
-#[derive(Hash, PartialEq, Eq, Debug)]
+
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum EditOperation {
-    SUBSTITUTION,
-    INSERTION,
-    DELETION,
+    /* SUBSTITUTION */
+    AtoC,
+    AtoG,
+    AtoT,
+    CtoA,
+    CtoG,
+    CtoT,
+    GtoA,
+    GtoC,
+    GtoT,
+    TtoA,
+    TtoC,
+    TtoG,
+
+    /* INSERTION */
+    InsertA,
+    InsertC,
+    InsertG,
+    InsertT,
+
+    /* DELETION */
+    DeleteA,
+    DeleteC,
+    DeleteG,
+    DeleteT,
+
     AMBIGUOUS, // when multiple operations can lead to the same neighbor
 }
+
+// 2-D array to map (from, to) -> EditOperation
+pub const BASES_TO_SUBSTITUTION: [[Option<EditOperation>; 4]; 4] = {
+    let mut arr = [[None; 4]; 4];
+
+    arr[0][1] = Some(EditOperation::AtoC);
+    arr[0][2] = Some(EditOperation::AtoG);
+    arr[0][3] = Some(EditOperation::AtoT);
+
+    arr[1][0] = Some(EditOperation::CtoA);
+    arr[1][2] = Some(EditOperation::CtoG);
+    arr[1][3] = Some(EditOperation::CtoT);
+
+    arr[2][0] = Some(EditOperation::GtoA);
+    arr[2][1] = Some(EditOperation::GtoC);
+    arr[2][3] = Some(EditOperation::GtoT);
+
+    arr[3][0] = Some(EditOperation::TtoA);
+    arr[3][1] = Some(EditOperation::TtoC);
+    arr[3][2] = Some(EditOperation::TtoG);
+
+    arr
+};
+
+pub const BASES_TO_INSERTION: [Option<EditOperation>; 4] = [
+    Some(EditOperation::InsertA),
+    Some(EditOperation::InsertC),
+    Some(EditOperation::InsertG),
+    Some(EditOperation::InsertT),
+];
+
+pub const BASES_TO_DELETION: [Option<EditOperation>; 4] = [
+    Some(EditOperation::DeleteA),
+    Some(EditOperation::DeleteC),
+    Some(EditOperation::DeleteG),
+    Some(EditOperation::DeleteT),
+];
 
 
 pub struct KVmerStats {
