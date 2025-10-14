@@ -59,34 +59,34 @@ pub const SEQ_TO_BYTE: [u8; 4] = [b'A', b'C', b'G', b'T'];
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SubstitutionOperations {
-    AtoC,
-    AtoG,
-    AtoT,
-    CtoA,
-    CtoG,
-    CtoT,
-    GtoA,
-    GtoC,
-    GtoT,
-    TtoA,
-    TtoC,
-    TtoG,
+    AC,
+    AG,
+    AT,
+    CA,
+    CG,
+    CT,
+    GA,
+    GC,
+    GT,
+    TA,
+    TC,
+    TG,
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum InsertionOperations {
-    InsertA,
-    InsertC,
-    InsertG,
-    InsertT,
+    A,
+    C,
+    G,
+    T,
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum DeletionOperations {
-    DeleteA,
-    DeleteC,
-    DeleteG,
-    DeleteT,
+    A,
+    C,
+    G,
+    T,
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
@@ -106,21 +106,21 @@ pub enum EditOperation {
 pub const BASES_TO_SUBSTITUTION: [[Option<EditOperation>; 4]; 4] = {
     let mut arr = [[None; 4]; 4];
 
-    arr[0][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoC));
-    arr[0][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoG));
-    arr[0][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoT));
+    arr[0][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AC));
+    arr[0][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AG));
+    arr[0][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AT));
 
-    arr[1][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoA));
-    arr[1][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoG));
-    arr[1][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoT));
+    arr[1][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CA));
+    arr[1][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CG));
+    arr[1][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CT));
 
-    arr[2][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GtoA));
-    arr[2][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GtoC));
-    arr[2][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GtoT));
+    arr[2][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GA));
+    arr[2][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GC));
+    arr[2][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GT));
 
-    arr[3][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TtoA));
-    arr[3][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TtoC));
-    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TtoG));
+    arr[3][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TA));
+    arr[3][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TC));
+    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TG));
 
     arr
 };
@@ -129,98 +129,102 @@ pub const BASES_TO_SUBSTITUTION: [[Option<EditOperation>; 4]; 4] = {
 pub const BASES_TO_SUBSTITUTION_CANONICAL: [[Option<EditOperation>; 4]; 4] = {
     let mut arr = [[None; 4]; 4];
 
-    arr[0][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoC));
-    arr[0][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoG));
-    arr[0][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoT));
+    arr[0][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AC));
+    arr[0][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AG));
+    arr[0][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AT));
 
-    arr[1][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoC));
-    arr[1][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoG));
-    arr[1][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoT));
+    arr[1][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AC));
+    arr[1][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CG));
+    arr[1][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CT));
 
-    arr[2][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoG));
-    arr[2][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoG));
-    arr[2][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GtoT));
+    arr[2][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AG));
+    arr[2][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CG));
+    arr[2][3] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GT));
 
-    arr[3][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AtoT));
-    arr[3][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CtoT));
-    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TtoG));
+    arr[3][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AT));
+    arr[3][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CT));
+    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TG));
 
     arr
 };
 
 pub const BASES_TO_INSERTION: [Option<EditOperation>; 4] = [
-    Some(EditOperation::INSERTION(InsertionOperations::InsertA)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertC)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertG)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertT)),
+    Some(EditOperation::INSERTION(InsertionOperations::A)),
+    Some(EditOperation::INSERTION(InsertionOperations::C)),
+    Some(EditOperation::INSERTION(InsertionOperations::G)),
+    Some(EditOperation::INSERTION(InsertionOperations::T)),
 ];
 
 pub const BASES_TO_INSERTION_CANONICAL: [Option<EditOperation>; 4] = [
-    Some(EditOperation::INSERTION(InsertionOperations::InsertA)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertC)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertC)),
-    Some(EditOperation::INSERTION(InsertionOperations::InsertA)),
+    Some(EditOperation::INSERTION(InsertionOperations::A)),
+    Some(EditOperation::INSERTION(InsertionOperations::C)),
+    Some(EditOperation::INSERTION(InsertionOperations::C)),
+    Some(EditOperation::INSERTION(InsertionOperations::A)),
 ];
 
 pub const BASES_TO_DELETION: [Option<EditOperation>; 4] = [
-    Some(EditOperation::DELETION(DeletionOperations::DeleteA)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteC)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteG)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteT)),
+    Some(EditOperation::DELETION(DeletionOperations::A)),
+    Some(EditOperation::DELETION(DeletionOperations::C)),
+    Some(EditOperation::DELETION(DeletionOperations::G)),
+    Some(EditOperation::DELETION(DeletionOperations::T)),
 ];
 
 pub const BASES_TO_DELETION_CANONICAL: [Option<EditOperation>; 4] = [
-    Some(EditOperation::DELETION(DeletionOperations::DeleteA)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteC)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteC)),
-    Some(EditOperation::DELETION(DeletionOperations::DeleteA)),
+    Some(EditOperation::DELETION(DeletionOperations::A)),
+    Some(EditOperation::DELETION(DeletionOperations::C)),
+    Some(EditOperation::DELETION(DeletionOperations::C)),
+    Some(EditOperation::DELETION(DeletionOperations::A)),
 ];
 
-pub const ALL_OPERATIONS: [EditOperation; 20] = [
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoC),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoG),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoT),
+pub const ALL_OPERATIONS: [EditOperation; 21] = [
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AC),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AG),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AT),
 
-    EditOperation::SUBSTITUTION(SubstitutionOperations::GtoA),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::GtoC),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::GtoT),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::GA),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::GC),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::GT),
 
-    EditOperation::SUBSTITUTION(SubstitutionOperations::CtoA),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::CtoG),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::CtoT),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::CA),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::CG),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::CT),
 
-    EditOperation::SUBSTITUTION(SubstitutionOperations::TtoA),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::TtoC),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::TtoG),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::TA),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::TC),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::TG),
 
-    EditOperation::INSERTION(InsertionOperations::InsertA),
-    EditOperation::INSERTION(InsertionOperations::InsertC),
-    EditOperation::INSERTION(InsertionOperations::InsertG),
-    EditOperation::INSERTION(InsertionOperations::InsertT),
+    EditOperation::INSERTION(InsertionOperations::A),
+    EditOperation::INSERTION(InsertionOperations::C),
+    EditOperation::INSERTION(InsertionOperations::G),
+    EditOperation::INSERTION(InsertionOperations::T),
 
 
-    EditOperation::DELETION(DeletionOperations::DeleteA),
-    EditOperation::DELETION(DeletionOperations::DeleteC),
-    EditOperation::DELETION(DeletionOperations::DeleteG),
-    EditOperation::DELETION(DeletionOperations::DeleteT),
+    EditOperation::DELETION(DeletionOperations::A),
+    EditOperation::DELETION(DeletionOperations::C),
+    EditOperation::DELETION(DeletionOperations::G),
+    EditOperation::DELETION(DeletionOperations::T),
+
+    EditOperation::AMBIGUOUS,
 ];
 
 
-pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 10] = [
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoC),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoG),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::AtoT),
+pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 11] = [
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AC),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AG),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::AT),
 
-    EditOperation::SUBSTITUTION(SubstitutionOperations::GtoC),
-    EditOperation::SUBSTITUTION(SubstitutionOperations::GtoT),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::GC),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::GT),
 
-    EditOperation::SUBSTITUTION(SubstitutionOperations::CtoT),
+    EditOperation::SUBSTITUTION(SubstitutionOperations::CT),
 
-    EditOperation::INSERTION(InsertionOperations::InsertA),
-    EditOperation::INSERTION(InsertionOperations::InsertC),
+    EditOperation::INSERTION(InsertionOperations::A),
+    EditOperation::INSERTION(InsertionOperations::C),
 
-    EditOperation::DELETION(DeletionOperations::DeleteA),
-    EditOperation::DELETION(DeletionOperations::DeleteC),
+    EditOperation::DELETION(DeletionOperations::A),
+    EditOperation::DELETION(DeletionOperations::C),
+
+    EditOperation::AMBIGUOUS,
 ];
 
 pub struct KVmerStats {

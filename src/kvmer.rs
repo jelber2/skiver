@@ -407,7 +407,7 @@ impl KVmerSet {
     }
 
     pub fn output_stats(&self, stats: &KVmerStats) {
-        print!("key\tconsensus_value\thomopolymer_length\tconsensus_count\tneighbor_count\ttotal_count\t");
+        print!("key\tconsensus_value\thomopolymer_length\tconsensus_count\tneighbor_count\ttotal_count");
         if self.bidirectional {
             for op in ALL_OPERATIONS_CANONICAL {
                 print!("\t{:?}", op);
