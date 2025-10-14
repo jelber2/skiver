@@ -105,8 +105,10 @@ pub fn fmh_seeds_masked(
         rolling_kmer_f_marker <<= 2;
         rolling_kmer_f_marker |= nuc_f;
         //        rolling_kmer_r = KmerEnc::rc(rolling_kmer_f, k);
-        rolling_kmer_r_marker >>= 2;
-        rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+        if bidirectional {
+            rolling_kmer_r_marker >>= 2;
+            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+        }
     }
     for i in marker_k-1..len {
         let nuc_byte = string[i] as usize;
@@ -115,9 +117,7 @@ pub fn fmh_seeds_masked(
         rolling_kmer_f_marker <<= 2;
         rolling_kmer_f_marker |= nuc_f;
         rolling_kmer_f_marker &= marker_mask;
-        rolling_kmer_r_marker >>= 2;
-        rolling_kmer_r_marker &= marker_rev_mask;
-        rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+        
         //        rolling_kmer_r &= max_mask;
         //        KmerEnc::print_string(rolling_kmer_f, k);
         //        KmerEnc::print_string(rolling_kmer_r, k);
@@ -142,6 +142,10 @@ pub fn fmh_seeds_masked(
             kmer_vec.push(rolling_kmer_f_marker as u64);
         }
         if bidirectional {
+            rolling_kmer_r_marker >>= 2;
+            rolling_kmer_r_marker &= marker_rev_mask;
+            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+
             let hash_r = mm_hash64_masked(rolling_kmer_r_marker, mask);
             if hash_r < threshold_marker {
                 kmer_vec.push(rolling_kmer_r_marker as u64);

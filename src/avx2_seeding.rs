@@ -154,19 +154,20 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>
 
         rolling_kmer_f_marker = _mm256_slli_epi64(rolling_kmer_f_marker, 2);
         rolling_kmer_f_marker = _mm256_or_si256(rolling_kmer_f_marker, f_nucs);
+        if bidirectional {
+            rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
 
-        rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
-
-        /*
-        let shift_nuc_r;
-        if use_40 {
-            shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
-        } else {
-            shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
+            /*
+            let shift_nuc_r;
+            if use_40 {
+                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
+            } else {
+                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
+            }
+            */
+            let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
+            rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
         }
-        */
-        let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
-        rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
     }
 
     let marker_mask = (Kmer::MAX >> (std::mem::size_of::<Kmer>() * 8 - 2 * k)) as i64;
@@ -198,19 +199,23 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>
         rolling_kmer_f_marker = _mm256_or_si256(rolling_kmer_f_marker, f_nucs);
         rolling_kmer_f_marker = _mm256_and_si256(rolling_kmer_f_marker, mm256_marker_mask);
 
-        // r_marker = ((r_marker >> 2) | (r_nuc << (2*(k-1)))) & rev_marker_mask
-        rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
-        /*
-        let shift_nuc_r;
-        if use_40 {
-            shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
-        } else {
-            shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
+        if bidirectional {
+            // r_marker = ((r_marker >> 2) | (r_nuc << (2*(k-1)))) & rev_marker_mask
+            rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
+            /*
+            let shift_nuc_r;
+            if use_40 {
+                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
+            } else {
+                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
+            }
+            */
+            let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
+            rolling_kmer_r_marker = _mm256_and_si256(rolling_kmer_r_marker, mm256_rev_marker_mask);
+            rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
         }
-        */
-        let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
-        rolling_kmer_r_marker = _mm256_and_si256(rolling_kmer_r_marker, mm256_rev_marker_mask);
-        rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
+
+        
 
         //let compare_marker = _mm256_cmpgt_epi64(rolling_kmer_r_marker, rolling_kmer_f_marker);
 

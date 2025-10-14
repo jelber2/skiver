@@ -21,7 +21,7 @@ mod tests {
         let value_length = 6;
         let key_length = 5; // arbitrary
 
-        let kvmer = kvmer::KVmerSet::new(key_length, value_length);
+        let kvmer = kvmer::KVmerSet::new(key_length, value_length, false);
         let neighbors = kvmer._get_neighbors(value);
         println!("Original value: {}", kvmer.to_value_string(value));
         kvmer.show_neighbors(value);

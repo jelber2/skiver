@@ -15,11 +15,14 @@ pub struct KVmerSet {
     // utilities to extract key and value from a kmer hash
     key_mask: u64,
     value_mask: u64,
+
+    // whether both forward and reverse complement of the reads are included
+    bidirectional: bool,
 }
 
 
 impl KVmerSet {
-    pub fn new(key_size: u8, value_size: u8) -> Self {
+    pub fn new(key_size: u8, value_size: u8, bidirectional: bool) -> Self {
         assert!(key_size + value_size <= 32, "Currently, we only support k + v <= 32.");
 
         let v_mask = (1 << (value_size * 2)) - 1;
@@ -32,6 +35,7 @@ impl KVmerSet {
             key_value_map: HashMap::new(),
             key_mask: k_mask,
             value_mask: v_mask,
+            bidirectional,
         }
     }
     
@@ -50,7 +54,12 @@ impl KVmerSet {
                 let current_base = (value >> shift) & 0b11;
                 if b != current_base {
                     let neighbor = (value & !(0b11 << shift)) | (b << shift);
-                    neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
+                    if self.bidirectional {
+                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
+                    } else {
+                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
+                    }
+                    
                 }
             }
 
@@ -63,29 +72,47 @@ impl KVmerSet {
                 let left_part = (value >> (shift + 2)) << ((shift + 2));
                 let right_part = value & ((1 << (shift + 2)) - 1);
                 let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
-                neighbors.entry(neighbor_insert)
+                if self.bidirectional {
+                    neighbors.entry(neighbor_insert)
+                    .and_modify(|op|
+                        if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_INSERTION_CANONICAL[b as usize].unwrap());
+                } else {
+                    neighbors.entry(neighbor_insert)
                     .and_modify(|op|
                         if *op != BASES_TO_INSERTION[b as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
                     .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
+                }
+                
                 
                 
                 let right_part = value & ((1 << shift) - 1);
                 let neighbor_delete = left_part | (right_part << 2) | b;
                 let original_base = (value >> shift) & 0b11;
-                neighbors.entry(neighbor_delete)
+                if self.bidirectional {
+                    neighbors.entry(neighbor_delete)
+                    .and_modify(|op| 
+                        if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap());
+                } else {
+                    neighbors.entry(neighbor_delete)
                     .and_modify(|op| 
                         if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
                     .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
-
+                }
             }
-                    
-            
         }
 
         neighbors
@@ -178,22 +205,22 @@ impl KVmerSet {
     }
 
 
-    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, bidirectional: bool) {
+    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize) {
         // extract sketched kv-mers from the given sequence string
         #[cfg(any(target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask as i64, bidirectional);
+                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask as i64, self.bidirectional);
                 }
             } else {
-                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, bidirectional);
+                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, self.bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, bidirectional);
+            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, self.bidirectional);
         }
     }
 
@@ -201,7 +228,6 @@ impl KVmerSet {
         &mut self,
         seq_file: &str,
         c: usize,
-        bidirectional: bool,
     ) {
         let reader = parse_fastx_file(&seq_file);
         //println!("Reading file: {}", seq_file);
@@ -216,7 +242,7 @@ impl KVmerSet {
                     Ok(record) => {
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, bidirectional);
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c);
                         self.add_seed_vector(&kmer_vec);
                     }
                     Err(e) => {
@@ -269,8 +295,9 @@ impl KVmerSet {
 
         // count the number of consensus and error kmers
         let mut consensus_counts: Vec<u32> = Vec::new();
-        let mut error_counts: Vec<u32> = Vec::new();
+        let mut error_counts: Vec<HashMap<EditOperation, u32>> = Vec::new();
         let mut total_counts: Vec<u32> = Vec::new();
+        let mut neighbor_counts: Vec<u32> = Vec::new();
 
         for (key, value_map) in &self.key_value_map {
             let mut max_count = 0;
@@ -293,15 +320,20 @@ impl KVmerSet {
 
             // for each non-consensus value, determine if it is a substitution, insertion, or deletion
             // relative to the consensus value
+            let mut error_count_map: HashMap<EditOperation, u32> = HashMap::new();
             let neighbors = self._get_neighbors(max_value);
             if neighbors.contains_key(&max_value) {
+                // This would confound the X=0 case
                 continue;
             }
             let mut num_neighbors = 0;
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
             for (value, count) in value_map {
                 if *value != max_value && neighbors.contains_key(value) {
-                    num_neighbors += *count;
+                    let op = neighbors.get(value).unwrap();
+                    let entry = error_count_map.entry(*op).or_insert(0);
+                    *entry += *count;
+                    num_neighbors += count;
                 }
             }
 
@@ -309,8 +341,9 @@ impl KVmerSet {
             keys.push(*key);
             consensus_values.push(max_value);
             consensus_counts.push(max_count);
-            error_counts.push(num_neighbors);
+            error_counts.push(error_count_map);
             total_counts.push(sum_count);
+            neighbor_counts.push(num_neighbors);
         }
 
         KVmerStats {
@@ -319,8 +352,9 @@ impl KVmerSet {
             keys,
             consensus_values,
             consensus_counts,
-            error_counts,
             total_counts,
+            neighbor_counts,
+            error_counts,
         }
     /*
 
@@ -373,17 +407,42 @@ impl KVmerSet {
     }
 
     pub fn output_stats(&self, stats: &KVmerStats) {
-        println!("Key\tConsensus_Value\tConsensus_Count\tError_Count\tTotal_Count\tHomopolymer_Length");
+        print!("key\tconsensus_value\thomopolymer_length\tconsensus_count\tneighbor_count\ttotal_count\t");
+        if self.bidirectional {
+            for op in ALL_OPERATIONS_CANONICAL {
+                print!("\t{:?}", op);
+            }
+        } else {
+            for op in ALL_OPERATIONS {
+                print!("\t{:?}", op);
+            }
+        }
+        print!("\n");
+
+
         for i in 0..stats.keys.len() {
-            println!(
+            print!(
                 "{}\t{}\t{}\t{}\t{}\t{}",
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
-                stats.consensus_counts[i],
-                stats.error_counts[i],
-                stats.total_counts[i],
                 self.homopolymer_length(stats.keys[i], stats.consensus_values[i]),
+                stats.consensus_counts[i],
+                stats.neighbor_counts[i],
+                stats.total_counts[i],
             );
+            if self.bidirectional {
+                
+                for op in ALL_OPERATIONS_CANONICAL {
+                    let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
+                    print!("\t{}", value);
+                }
+            } else {
+                for op in ALL_OPERATIONS {
+                    let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
+                    print!("\t{}", value);
+                }
+            }
+            print!("\n")
         }
     }
 
