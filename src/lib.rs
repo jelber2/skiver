@@ -4,6 +4,7 @@ pub mod types;
 pub mod profile;
 pub mod analyze;
 pub mod cmdline;
+pub mod inference;
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx2_seeding;
@@ -18,7 +19,7 @@ mod tests {
     fn test_kmer_neighbors() {
         let value = 0b111001000001; // AAAA
 
-        let value_length = 6;
+        let value_length = 7;
         let key_length = 5; // arbitrary
 
         let kvmer = kvmer::KVmerSet::new(key_length, value_length, false);
@@ -34,7 +35,5 @@ mod tests {
             assert!(neighbors.contains_key(&neighbor));
         }
         assert_eq!(neighbors.len(), expected_neighbors.len());
-
-
     }
 }

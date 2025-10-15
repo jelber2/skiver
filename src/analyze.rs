@@ -1,5 +1,6 @@
 
 use crate::kvmer::*;
+use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
 pub fn analyze(analyze_args: AnalyzeArgs) {
@@ -10,5 +11,7 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
 
     //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
     let stats = kvmer_set.get_stats(analyze_args.threshold);
-    kvmer_set.output_stats(&stats);
+    let spectrum = error_profile(&stats, false);
+    output_error_spectrum(&spectrum, analyze_args.v);
+    //kvmer_set.output_stats(&stats);
 }
