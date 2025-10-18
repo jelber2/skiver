@@ -2,3 +2,5 @@
 log
 *.tsv
 *.ipynb
+test.sh
+*.txt

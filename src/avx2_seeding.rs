@@ -32,12 +32,14 @@ use crate::types::*;
  */
 #[inline]
 #[target_feature(enable = "avx2")]
-pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: i64) -> __m256i { unsafe {
+pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: Option<i64>) -> __m256i { unsafe {
     // mask the kmer so that only the masked bits are used in the hash
-    let mask_vec = _mm256_set_epi64x(mask, mask, mask, mask);
-    let masked_kmer = _mm256_and_si256(kmer, mask_vec);
+    let mut key = kmer;
+    if let Some(mask) = mask {
+        let mask_vec = _mm256_set_epi64x(mask, mask, mask, mask);
+        key = _mm256_and_si256(kmer, mask_vec);
+    }
 
-    let mut key = masked_kmer;
     let s1 = _mm256_slli_epi64(key, 21);
     key = _mm256_add_epi64(key, s1);
     
@@ -114,7 +116,7 @@ pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
  * The k-mers are extracted from both the forward and reverse strands.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: i64, bidirectional: bool) { unsafe {
+pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: Option<i64>, bidirectional: bool) { unsafe {
     if string.len() <= k {
         return;
     }

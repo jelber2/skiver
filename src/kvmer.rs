@@ -2,6 +2,7 @@ use log::warn;
 use needletail::parse_fastx_file;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::{seeding::*, types::*};
 
@@ -212,15 +213,15 @@ impl KVmerSet {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask as i64, self.bidirectional);
+                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask as i64), self.bidirectional);
                 }
             } else {
-                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, self.bidirectional);
+                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, self.key_mask, self.bidirectional);
+            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
         }
     }
 
@@ -445,5 +446,224 @@ impl KVmerSet {
             print!("\n")
         }
     }
+
+}
+
+
+
+pub struct VmerSet {
+    pub value_size: u8,
+    pub kvmer_set: KVmerSet,
+}
+
+impl VmerSet {
+    pub fn new(value_size: u8, bidirectional: bool) -> Self {
+        VmerSet {
+            value_size,
+            kvmer_set: KVmerSet::new(0, value_size, bidirectional),
+        }
+    }
+
+    pub fn add_to_keys(&mut self, seed_vec: &[u64]) {
+        for &kmer in seed_vec {
+            let entry = self.kvmer_set.key_value_map.entry(kmer).or_insert_with(HashMap::new);
+        }
+    }
+
+    pub fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
+        // get all the values with edit distance 1 from the input value
+        
+        let mut neighbors: HashMap<u64, EditOperation> = HashMap::new();
+        let bases = [0, 1, 2, 3]; // A, C, G, T
+
+        for i in 0..self.value_size {
+            let shift = i * 2;
+            
+            // Substitutions
+            for &b in &bases {
+                let current_base = (value >> shift) & 0b11;
+                if b != current_base {
+                    let neighbor = (value & !(0b11 << shift)) | (b << shift);
+                    if self.kvmer_set.bidirectional {
+                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
+                    } else {
+                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
+                    }
+                    
+                }
+            }
+
+            // Indels
+            for &b in &bases {
+                if shift == 0 && b == (value >> shift) & 0b11 {
+                    continue; // skip the original base for the first position
+                }
+                
+                let left_part = (value >> (shift + 2)) << ((shift + 2));
+                let right_part = value & ((1 << (shift + 2)) - 1);
+                let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
+                if self.kvmer_set.bidirectional {
+                    neighbors.entry(neighbor_insert)
+                    .and_modify(|op|
+                        if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_INSERTION_CANONICAL[b as usize].unwrap());
+                } else {
+                    neighbors.entry(neighbor_insert)
+                    .and_modify(|op|
+                        if *op != BASES_TO_INSERTION[b as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
+                }
+                
+                
+                
+                let right_part = value & ((1 << shift) - 1);
+                let neighbor_delete = left_part | (right_part << 2) | b;
+                let original_base = (value >> shift) & 0b11;
+                if self.kvmer_set.bidirectional {
+                    neighbors.entry(neighbor_delete)
+                    .and_modify(|op| 
+                        if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap());
+                } else {
+                    neighbors.entry(neighbor_delete)
+                    .and_modify(|op| 
+                        if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
+                            *op = EditOperation::AMBIGUOUS
+                        }
+                    )
+                    .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
+                }
+            }
+        }
+
+        neighbors
+
+    }
+
+    pub fn _get_relevant_values(&self, threshold: u32) -> HashSet<u64> {
+        let mut relevant_values: HashSet<u64> = HashSet::new();
+
+        // for all the keys in kvmer_set with counts above threshold, get their neighbors
+        for (key, _) in &self.kvmer_set.key_value_map {
+            relevant_values.insert(*key);
+            let neighbors = _get_neighbors(*key, self.value_size as u8, self.kvmer_set.bidirectional);
+            for (neighbor, _op) in neighbors {
+                relevant_values.insert(neighbor);
+            }
+        }
+
+        relevant_values
+    }
+
+    
+
+
+    pub fn add_file_first_pass(
+        &mut self,
+        seq_file: &str,
+        c: usize,
+    ) {
+        let reader = parse_fastx_file(&seq_file);
+        //println!("Reading file: {}", seq_file);
+        if !reader.is_ok() {
+            //println!("Not OK Reading file: {}", seq_file);
+            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
+        } else {
+            //println!("Reading file: {}", seq_file);
+            let mut reader = reader.unwrap();
+            while let Some(record) = reader.next() {
+                match record {
+                    Ok(record) => {
+                        let seq = record.seq();
+                        let mut kmer_vec: Vec<u64> = Vec::new();
+                        fmh_seeds_masked(seq.as_ref(), &mut kmer_vec, c, self.value_size as usize, None, self.kvmer_set.bidirectional);
+                        self.add_to_keys(&kmer_vec);
+                    }
+                    Err(e) => {
+                        warn!("Error reading record: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn add_file_second_pass(
+        &mut self,
+        seq_file: &str,
+        value_count: &mut HashMap<u64, u32>,
+        relevant_values: &HashSet<u64>,
+    ) {
+        let reader = parse_fastx_file(&seq_file);
+        //println!("Reading file: {}", seq_file);
+        if !reader.is_ok() {
+            //println!("Not OK Reading file: {}", seq_file);
+            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
+        } else {
+            //println!("Reading file: {}", seq_file);
+            let mut reader = reader.unwrap();
+            while let Some(record) = reader.next() {
+                match record {
+                    Ok(record) => {
+                        let seq = record.seq();
+                        count_seeds_in_set(seq.as_ref(), self.value_size as usize, value_count, relevant_values, self.kvmer_set.bidirectional);
+                    }
+                    Err(e) => {
+                        warn!("Error reading record: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    pub fn add_value_counts(&mut self, value_count: &HashMap<u64, u32>) {
+        let mut keys_to_remove: Vec<u64> = Vec::new();
+        for (key, value_map) in &mut self.kvmer_set.key_value_map {
+            if let Some(value_count) = value_count.get(key) {
+                let entry = value_map.entry(*key).or_insert(0);
+                *entry += *value_count;
+            } else {
+                continue;
+            }
+            let neighbors = _get_neighbors(*key, self.value_size as u8, self.kvmer_set.bidirectional);
+
+            let mut max_count = 0;
+            for (value, _op) in neighbors {
+                if let Some(count) = value_count.get(&value) {
+                    let entry = value_map.entry(value).or_insert(0);
+                    *entry += *count;
+                    max_count = max_count.max(*entry);
+                }
+            }
+
+            // if the max count is larger than the count of the key itself,
+            // delete this key from the kvmer_set
+            if let Some(count) = value_map.get(key) {
+                if *count < max_count {
+                    keys_to_remove.push(*key);
+                }
+            }
+        }
+        for key in keys_to_remove {
+            self.kvmer_set.key_value_map.remove(&key);
+        }
+    }
+
+    pub fn get_stats(&self, threshold: u32) -> KVmerStats {
+        self.kvmer_set.get_stats(threshold)
+    }
+
+    
+
 
 }

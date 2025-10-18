@@ -25,11 +25,16 @@ SOFTWARE.
 */
 
 use crate::types::*;
+use std::collections::HashSet;
+use std::collections::HashMap;
 
 #[inline]
-pub fn mm_hash64_masked(kmer: u64, mask: u64) -> u64 {
+pub fn mm_hash64_masked(kmer: u64, mask: Option<u64>) -> u64 {
     //TODO this is bugged. Fix after release
-    let mut key = kmer & mask;
+    let mut key = kmer;
+    if let Some(mask) = mask {
+        key = kmer & mask;
+    }
     key = !key.wrapping_add(key << 21); // key = (key << 21) - key - 1;
     key = key ^ key >> 24;
     key = (key.wrapping_add(key << 3)).wrapping_add(key << 8); // key * 265
@@ -78,7 +83,7 @@ pub fn fmh_seeds_masked(
     kmer_vec: &mut Vec<u64>,
     c: usize,
     k: usize,
-    mask: u64,
+    mask: Option<u64>,
     bidirectional: bool,
 ) {
     type MarkerBits = u64;
@@ -152,4 +157,142 @@ pub fn fmh_seeds_masked(
             }
         }
     }
+}
+
+pub fn count_seeds_in_set(
+    string: &[u8],
+    k: usize,
+    kmer_count: &mut HashMap<u64, u32>,
+    kmer_set: &HashSet<u64>,
+    bidirectional: bool,
+) {
+    type MarkerBits = u64;
+    if string.len() < k {
+        return;
+    }
+
+    let marker_k = k;
+    let mut rolling_kmer_f_marker: MarkerBits = 0;
+    let mut rolling_kmer_r_marker: MarkerBits = 0;
+
+    let marker_reverse_shift_dist = 2 * (marker_k - 1);
+    let marker_mask = MarkerBits::MAX >> (std::mem::size_of::<MarkerBits>() * 8 - 2 * marker_k);
+    let marker_rev_mask = !(3 << (2 * marker_k - 2));
+    let len = string.len();
+    //    let threshold = i64::MIN + (u64::MAX / (c as u64)) as i64;
+    //    let threshold_marker = i64::MIN + (u64::MAX / sketch_params.marker_c as u64) as i64;
+
+    for i in 0..marker_k - 1 {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+        //        let nuc_f = KmerEnc::encode(string[i]
+        let nuc_r = 3 - nuc_f;
+        rolling_kmer_f_marker <<= 2;
+        rolling_kmer_f_marker |= nuc_f;
+        //        rolling_kmer_r = KmerEnc::rc(rolling_kmer_f, k);
+        if bidirectional {
+            rolling_kmer_r_marker >>= 2;
+            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+        }
+    }
+    for i in marker_k-1..len {
+        let nuc_byte = string[i] as usize;
+        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
+        let nuc_r = 3 - nuc_f;
+        rolling_kmer_f_marker <<= 2;
+        rolling_kmer_f_marker |= nuc_f;
+        rolling_kmer_f_marker &= marker_mask;
+
+        if kmer_set.contains(&rolling_kmer_f_marker) {
+            *kmer_count.entry(rolling_kmer_f_marker).or_insert(0) += 1;
+        }
+        if bidirectional {
+            rolling_kmer_r_marker >>= 2;
+            rolling_kmer_r_marker &= marker_rev_mask;
+            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;    
+
+            if kmer_set.contains(&rolling_kmer_r_marker) {
+                *kmer_count.entry(rolling_kmer_r_marker).or_insert(0) += 1;
+            }
+        }
+    }
+}
+
+        
+pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, EditOperation> {
+    // get all the values with edit distance 1 from the input value
+    
+    let mut neighbors: HashMap<u64, EditOperation> = HashMap::new();
+    let bases = [0, 1, 2, 3]; // A, C, G, T
+
+    for i in 0..value_size {
+        let shift = i * 2;
+        
+        // Substitutions
+        for &b in &bases {
+            let current_base = (value >> shift) & 0b11;
+            if b != current_base {
+                let neighbor = (value & !(0b11 << shift)) | (b << shift);
+                if bidirectional {
+                    neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
+                } else {
+                    neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
+                }
+                
+            }
+        }
+
+        // Indels
+        for &b in &bases {
+            if shift == 0 && b == (value >> shift) & 0b11 {
+                continue; // skip the original base for the first position
+            }
+            
+            let left_part = (value >> (shift + 2)) << ((shift + 2));
+            let right_part = value & ((1 << (shift + 2)) - 1);
+            let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
+            if bidirectional {
+                neighbors.entry(neighbor_insert)
+                .and_modify(|op|
+                    if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert(BASES_TO_INSERTION_CANONICAL[b as usize].unwrap());
+            } else {
+                neighbors.entry(neighbor_insert)
+                .and_modify(|op|
+                    if *op != BASES_TO_INSERTION[b as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
+            }
+            
+            
+            
+            let right_part = value & ((1 << shift) - 1);
+            let neighbor_delete = left_part | (right_part << 2) | b;
+            let original_base = (value >> shift) & 0b11;
+            if bidirectional {
+                neighbors.entry(neighbor_delete)
+                .and_modify(|op| 
+                    if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert(BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap());
+            } else {
+                neighbors.entry(neighbor_delete)
+                .and_modify(|op| 
+                    if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
+            }
+        }
+    }
+
+    neighbors
+
 }
