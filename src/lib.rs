@@ -5,6 +5,8 @@ pub mod profile;
 pub mod analyze;
 pub mod cmdline;
 pub mod inference;
+pub mod utils;
+pub mod constants;
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx2_seeding;
@@ -15,25 +17,20 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
+    use crate::utils::*;
+
     #[test]
     fn test_kmer_neighbors() {
-        let value = 0b111001000001; // AAAA
+        let value = 0b11010001110111;
 
         let value_length = 7;
-        let key_length = 5; // arbitrary
+        //let key_length = 5; // arbitrary
 
-        let kvmer = kvmer::KVmerSet::new(key_length, value_length, false);
-        let neighbors = kvmer._get_neighbors(value);
-        println!("Original value: {}", kvmer.to_value_string(value));
-        kvmer.show_neighbors(value);
-        let expected_neighbors = vec![
-            0b01, // AAAAC
-            0b10, // AAAAG
-            0b11, // AAAAT
-        ];
-        for neighbor in &expected_neighbors {
-            assert!(neighbors.contains_key(&neighbor));
-        }
-        assert_eq!(neighbors.len(), expected_neighbors.len());
+        //let kvmer = kvmer::KVmerSet::new(key_length, value_length, false);
+        //let neighbors = _get_neighbors(value, value_length, false);
+        println!("Original value: {}", _kmer_to_string(value, value_length));
+        _show_neighbors(value, value_length, false);
+        
+        assert_eq!(1., 2.);
     }
 }

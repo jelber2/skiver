@@ -1,0 +1,1 @@
+pub const MIN_VALUE_FOR_ERROR_ESTIMATION: u8 = 4;

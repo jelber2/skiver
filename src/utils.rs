@@ -1,0 +1,108 @@
+use crate::types::*;
+
+use std::collections::HashMap;
+
+
+/**
+ * Get all neighbors (kmers with edit distance 1) of a given kmer value
+ * Returns a hashmap of neighbor kmer value to (EditOperation, position)
+ */
+pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, (EditOperation, u8)> {
+    // get all the values with edit distance 1 from the input value
+
+    let mut neighbors: HashMap<u64, (EditOperation, u8)> = HashMap::new();
+    let bases = [0, 1, 2, 3]; // A, C, G, T
+
+    for i in 0..value_size {
+        let shift = i * 2;
+        
+        // Substitutions
+        for &b in &bases {
+            let current_base = (value >> shift) & 0b11;
+            if b != current_base {
+                let neighbor = (value & !(0b11 << shift)) | (b << shift);
+                if bidirectional {
+                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), value_size - i - 1));
+                } else {
+                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), value_size - i - 1));
+                }
+                
+            }
+        }
+
+        // Indels
+        for &b in &bases {
+            if shift == 0 && b == (value >> shift) & 0b11 {
+                continue; // skip the original base for the first position
+            }
+            
+            let left_part = (value >> (shift + 2)) << ((shift + 2));
+            let right_part = value & ((1 << (shift + 2)) - 1);
+            let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
+            if bidirectional {
+                neighbors.entry(neighbor_insert)
+                .and_modify(|(op, pos)|
+                    if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert((BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), value_size - i - 1));
+            } else {
+                neighbors.entry(neighbor_insert)
+                .and_modify(|(op, pos)| {
+                    if *op != BASES_TO_INSERTION[b as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                })
+                .or_insert((BASES_TO_INSERTION[b as usize].unwrap(), value_size - i - 1));
+            }
+            
+            
+            
+            let right_part = value & ((1 << shift) - 1);
+            let neighbor_delete = left_part | (right_part << 2) | b;
+            let original_base = (value >> shift) & 0b11;
+            if bidirectional {
+                neighbors.entry(neighbor_delete)
+                .and_modify(|(op, pos)| 
+                    if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert((BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), value_size - i - 1));
+            } else {
+                neighbors.entry(neighbor_delete)
+                .and_modify(|(op, pos)| 
+                    if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
+                        *op = EditOperation::AMBIGUOUS
+                    }
+                )
+                .or_insert((BASES_TO_DELETION[original_base as usize].unwrap(), value_size - i - 1));
+            }
+        }
+    }
+
+    neighbors
+
+}
+
+pub fn _kmer_to_string(kmer: u64, k: u8) -> String {
+    // for debugging: convert a kmer to a string
+
+    let mut s = Vec::with_capacity(k as usize);
+    for i in (0..k).rev() {
+        let shift = i * 2;
+        let base = ((kmer >> shift) & 0b11) as usize;
+        s.push(crate::types::SEQ_TO_BYTE[base]);
+    }
+    String::from_utf8(s).unwrap()
+}
+
+pub fn _show_neighbors(kmer: u64, k: u8, bidirectional: bool) {
+    // for debugging: print all the neighbors of a value
+
+    let neighbors = _get_neighbors(kmer, k, bidirectional);
+    for (neighbor, op) in neighbors {
+        println!("Neighbor: {}, Operation: {:?}", _kmer_to_string(neighbor, k), op);
+    }
+}

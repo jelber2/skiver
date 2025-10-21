@@ -4,7 +4,7 @@ use needletail::parse_fastx_file;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::{seeding::*, types::*};
+use crate::{seeding::*, types::*, utils::*, constants::*};
 
 
 pub struct KVmerSet {
@@ -289,15 +289,47 @@ impl KVmerSet {
         (key_containment, key_value_containment)
     }
 
+    /**
+     * Find the number of one-edit neighbors of the consensus value[0:v].
+     * [FIXME] Optimize this function.
+     */
+    fn _num_neighbors_up_to_v(&self, consensus_value: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
+        let consensus_up_to_v = consensus_value >> ((self.value_size - v) * 2);
+        let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
+        let mut num_neighbors: u32 = 0;
+        let mut num_consensus: u32 = 0;
+        for (neighbor, count) in value_map {
+            let _neighbors_up_to_v = neighbor >> ((self.value_size - v) * 2);
+            if _neighbors_up_to_v == consensus_up_to_v {
+                num_consensus += count;
+            } else if neighbors.contains_key(&_neighbors_up_to_v) {
+                num_neighbors += count;
+            }
+        }
+        (num_consensus, num_neighbors)
+    }
+
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
-        // record the keys and values for output
+        // record the keys and consensus values for output
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
 
         // count the number of consensus and error kmers
         let mut consensus_counts: Vec<u32> = Vec::new();
+        // A map that records the number of each type of error for each consensus kmer
         let mut error_counts: Vec<HashMap<EditOperation, u32>> = Vec::new();
+        // A vector of size value_size, recording the number of neighbors up to each position
+        let mut error_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
+        for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+            error_up_to_v_counts.push(Vec::new());
+        }
+        let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
+        for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+            consensus_up_to_v_counts.push(Vec::new());
+        }
+        // Total number of times the key appears
         let mut total_counts: Vec<u32> = Vec::new();
+        // Number of time a one-edit neighbor of the consensus value appears
         let mut neighbor_counts: Vec<u32> = Vec::new();
 
         for (key, value_map) in &self.key_value_map {
@@ -319,24 +351,43 @@ impl KVmerSet {
                 continue;
             }
 
-            // for each non-consensus value, determine if it is a substitution, insertion, or deletion
-            // relative to the consensus value
+            
+
+            // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<EditOperation, u32> = HashMap::new();
-            let neighbors = self._get_neighbors(max_value);
+            let neighbors = _get_neighbors(max_value, self.value_size, self.bidirectional);
             if neighbors.contains_key(&max_value) {
                 // This would confound the X=0 case
                 continue;
             }
+
+            // find the error and consensus up to v counts
+            for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(max_value, v, self.bidirectional, value_map);
+                consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
+                error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(neighbor_up_to_v);
+            }
+
+        
             let mut num_neighbors = 0;
+            let mut error_positions = vec![0; self.value_size as usize];
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
+            //println!("Analyzing key: {}, consensus value: {}", self.to_key_string(*key), self.to_value_string(max_value));
             for (value, count) in value_map {
                 if *value != max_value && neighbors.contains_key(value) {
-                    let op = neighbors.get(value).unwrap();
+                    let (op, pos) = neighbors.get(value).unwrap();
+                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
+                    
+                    // update the error count map
                     let entry = error_count_map.entry(*op).or_insert(0);
                     *entry += *count;
                     num_neighbors += count;
+
+                    // record the error positions
+                    error_positions[*pos as usize] += *count;
                 }
             }
+            //println!("{:?}", error_positions);
 
             // update the vectors
             keys.push(*key);
@@ -356,6 +407,8 @@ impl KVmerSet {
             total_counts,
             neighbor_counts,
             error_counts,
+            consensus_up_to_v_counts,
+            error_up_to_v_counts,
         }
     /*
 

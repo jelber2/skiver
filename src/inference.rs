@@ -1,4 +1,5 @@
 use crate::types::*;
+use crate::constants::*;
 
 
 pub struct ErrorSpectrum {
@@ -6,10 +7,10 @@ pub struct ErrorSpectrum {
     pub insertion_rate: [(f64, f64); 4],
     pub deletion_rate: [(f64, f64); 4],
 
-    pub total_error_rate: (f64, f64),
+    pub total_error_rate: (f64, f64, f64, f64),
 }
 
-fn linear_regression(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
+fn linear_regression_no_intercept(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     // perform linear regression with model y = k * x with no bias
     // find k and its confidence interval (lower, upper).
     let n = x.len() as f64;
@@ -33,7 +34,34 @@ fn linear_regression(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     (k, range)
 }
 
-fn linear_regression_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
+fn linear_regression(x: &Vec<f64>, y: &Vec<f64>) -> (f64, f64, f64, f64) {
+    // perform linear regression with model y = k * x + b
+    // Return (k, k_confidence_interval, b, b_confidence_interval)
+    let n = x.len() as f64;
+
+    if n <= 2. {
+        return (0., 0., 0., 0.);
+    }
+    let sum_x: f64 = x.iter().map(|&xi| xi as f64).sum();
+    let sum_y: f64 = y.iter().map(|&yi| yi as f64).sum();
+    let sum_xy: f64 = x.iter().zip(y.iter()).map(|(&xi, &yi)| xi as f64 * yi as f64).sum();
+    let sum_x2: f64 = x.iter().map(|&xi| (xi * xi) as f64).sum();
+
+    // for variance
+    let sum_y2: f64 = y.iter().map(|&yi| (yi * yi) as f64).sum();
+    let variance: f64 = (sum_y2 - (sum_y * sum_y) / n - (sum_xy - sum_x * sum_y / n).powi(2) / (sum_x2 - sum_x * sum_x / n)) / (n - 2.);
+    let std: f64 = (variance / (sum_x2 - sum_x * sum_x / n)).sqrt();
+    let k = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x);
+    let range = 1.96 * std;
+
+    let b = (sum_y - k * sum_x) / n;
+    let b_std: f64 = (variance * sum_x2 / (n * sum_x2 - sum_x * sum_x)).sqrt();
+    let b_range = 1.96 * b_std;
+
+    (k, range, b, b_range)
+}
+
+fn linear_regression_no_intercept_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     let n: f64 = x.len() as f64;
 
     if n <= 1. {
@@ -63,25 +91,37 @@ fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
         y.push(count);
     }
 
+    linear_regression_no_intercept(&x, &y)
+}
+
+
+fn infer_p_over_v(stats: &KVmerStats, v: u8) -> f64 {
+    let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+    let y = &stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+
+    linear_regression_no_intercept(x, y).0 / v as f64
+}
+
+
+
+fn total_error_rate(stats: &KVmerStats) -> (f64, f64, f64, f64) {
+    let mut x: Vec<f64> = Vec::new();
+    let mut y: Vec<f64> = Vec::new();
+
+    for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=stats.v {
+        y.push(infer_p_over_v(stats, v as u8));
+        println!("v = {}, p/v = {}", v, y.last().unwrap());
+        x.push(stats.k as f64 + v as f64);
+    }
+
     linear_regression(&x, &y)
 }
 
 
-fn total_error_rate(stats: &KVmerStats) -> (f64, f64) {
-    let mut x: Vec<u32> = Vec::new();
-    let mut y: Vec<u32> = Vec::new();
-
-    for (i, error_map) in stats.error_counts.iter().enumerate() {
-        let total_errors: u32 = error_map.values().cloned().sum();
-        x.push(stats.consensus_counts[i]);
-        y.push(total_errors);
-    }
-
-    linear_regression(&stats.consensus_counts, &stats.neighbor_counts)
-}
-
-
 pub fn error_profile(stats: &KVmerStats, bidirectional: bool) -> ErrorSpectrum {
+    
+
+
     let mut substitution_rate: [[(f64, f64); 4]; 4] = Default::default();
     for i in 0..4 {
         for j in 0..4 {
@@ -103,6 +143,9 @@ pub fn error_profile(stats: &KVmerStats, bidirectional: bool) -> ErrorSpectrum {
         let op = BASES_TO_INSERTION[i].unwrap();
         insertion_rate[i] = error_type_rate(stats, op);
     }
+
+    // find the ambiguous error rates
+    let (ambiguous_k, ambiguous_range) = error_type_rate(stats, EditOperation::AMBIGUOUS);
 
     ErrorSpectrum {
         substitution_rate,
@@ -136,6 +179,6 @@ pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
         println!("  {}: {:.3} ± {:.3}", i, k / v as f64 * 100., range / v as f64 * 100.);
     }
 
-    let (k, range) = spectrum.total_error_rate;
-    println!("Total Error Rate: {:.3} ± {:.3}", k / v as f64 * 100., range / v as f64 * 100.);
+    let (k, k_range, b, b_range) = spectrum.total_error_rate;
+    println!("Total Error Rate: {:.3}, variance: {:.3}", b, (-k).sqrt());
 }

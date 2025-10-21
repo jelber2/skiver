@@ -237,6 +237,8 @@ pub struct KVmerStats {
     pub consensus_counts: Vec<u32>,
     pub total_counts: Vec<u32>,
     pub neighbor_counts: Vec<u32>,
-
     pub error_counts: Vec<HashMap<EditOperation, u32>>,
+
+    pub consensus_up_to_v_counts: Vec<Vec<u32>>,
+    pub error_up_to_v_counts: Vec<Vec<u32>>,
 }
