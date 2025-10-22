@@ -347,7 +347,7 @@ impl KVmerSet {
             }
 
             // skip low coverage keys
-            if sum_count <= threshold {
+            if max_count <= threshold {
                 continue;
             }
 
@@ -457,6 +457,125 @@ impl KVmerSet {
             error_rate
         }
             */
+
+    }
+
+    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
+        // record the keys and consensus values for output
+        let mut keys: Vec<u64> = Vec::new();
+        let mut consensus_values: Vec<u64> = Vec::new();
+
+        // count the number of consensus and error kmers
+        let mut consensus_counts: Vec<u32> = Vec::new();
+        // A map that records the number of each type of error for each consensus kmer
+        let mut error_counts: Vec<HashMap<EditOperation, u32>> = Vec::new();
+        // A vector of size value_size, recording the number of neighbors up to each position
+        let mut error_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
+        for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+            error_up_to_v_counts.push(Vec::new());
+        }
+        let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
+        for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+            consensus_up_to_v_counts.push(Vec::new());
+        }
+        // Total number of times the key appears
+        let mut total_counts: Vec<u32> = Vec::new();
+        // Number of time a one-edit neighbor of the consensus value appears
+        let mut neighbor_counts: Vec<u32> = Vec::new();
+
+        for (key, ref_value_map) in &reference.key_value_map {
+            if ref_value_map.len() > 1 {
+                // skip non-unique reference kv-mers
+                continue;
+            }
+            if !self.key_value_map.contains_key(&key) {
+                continue;
+            }
+
+            let consensus_value = *ref_value_map.keys().next().unwrap();
+            let value_map = self.key_value_map.get(&key).unwrap();
+
+
+
+            let mut max_count = 0;
+            let mut sum_count = 0;
+            let mut max_value: u64 = 0;
+
+            // find the consensus value
+            for (value, count) in value_map {
+                sum_count += *count;
+                if *count > max_count {
+                    max_count = *count;
+                    max_value = *value;
+                }
+            }
+            let consensus_count = *value_map.get(&consensus_value).unwrap_or(&0);
+
+            // [FIXME] skip if max_value != consensus_value?
+
+            // skip low coverage keys
+            if max_count <= threshold {
+                continue;
+            }
+
+            
+
+            // Find the count of error types at v=self.value_size
+            let mut error_count_map: HashMap<EditOperation, u32> = HashMap::new();
+            let neighbors = _get_neighbors(consensus_value, self.value_size, self.bidirectional);
+            if neighbors.contains_key(&consensus_value) {
+                // This would confound the X=0 case
+                continue;
+            }
+
+            // find the error and consensus up to v counts
+            for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(consensus_value, v, self.bidirectional, value_map);
+                consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
+                error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(neighbor_up_to_v);
+            }
+
+        
+            let mut num_neighbors = 0;
+            let mut error_positions = vec![0; self.value_size as usize];
+            for (value, count) in value_map {
+                if *value != consensus_value && neighbors.contains_key(value) {
+                    let (op, pos) = neighbors.get(value).unwrap();
+                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
+                    
+                    // update the error count map
+                    let entry = error_count_map.entry(*op).or_insert(0);
+                    *entry += *count;
+                    num_neighbors += count;
+
+                    // record the error positions
+                    error_positions[*pos as usize] += *count;
+                }
+            }
+            //println!("{:?}", error_positions);
+
+            // update the vectors
+            keys.push(*key);
+            consensus_values.push(consensus_value);
+            consensus_counts.push(consensus_count);
+            error_counts.push(error_count_map);
+            total_counts.push(sum_count);
+            neighbor_counts.push(num_neighbors);
+        }
+
+        KVmerStats {
+            k: self.key_size,
+            v: self.value_size,
+            keys,
+            consensus_values,
+            consensus_counts,
+            total_counts,
+            neighbor_counts,
+            error_counts,
+            consensus_up_to_v_counts,
+            error_up_to_v_counts,
+        }
+
 
     }
 

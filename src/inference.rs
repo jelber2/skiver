@@ -91,15 +91,16 @@ fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
         y.push(count);
     }
 
-    linear_regression_no_intercept(&x, &y)
+    linear_regression_no_intercept_heteroskedastic(&x, &y)
 }
 
 
 fn infer_p_over_v(stats: &KVmerStats, v: u8) -> f64 {
     let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
     let y = &stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+    println!("Number of data = {}", x.len());
 
-    linear_regression_no_intercept(x, y).0 / v as f64
+    linear_regression_no_intercept_heteroskedastic(x, y).0 / v as f64
 }
 
 
@@ -115,6 +116,14 @@ fn total_error_rate(stats: &KVmerStats) -> (f64, f64, f64, f64) {
     }
 
     linear_regression(&x, &y)
+}
+
+fn filter(stats: &KVmerStats) -> Vec<bool> {
+    // for each error type, filter out the data points with extremely high error rates
+    let mut mask: Vec<bool> = vec![true; stats.consensus_counts.len()];
+
+
+    mask
 }
 
 
