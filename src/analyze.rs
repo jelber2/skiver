@@ -1,4 +1,5 @@
 
+use crate::kvmer;
 use crate::kvmer::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
@@ -12,11 +13,23 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
         kvmer_set.add_file_to_kvmer_set(file, analyze_args.c);
     }
 
-    //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
-    let stats = kvmer_set.get_stats(analyze_args.threshold);
-    //kvmer_set.output_stats(&stats);
-    let spectrum = error_profile(&stats, false);
-    output_error_spectrum(&spectrum, analyze_args.v);
+    if analyze_args.reference.is_empty() {
+        //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
+        let stats = kvmer_set.get_stats(analyze_args.threshold);
+        //kvmer_set.output_stats(&stats);
+        let spectrum = error_profile(&stats, false);
+        output_error_spectrum(&spectrum, analyze_args.v);
+    } else {
+        let mut reference_kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, true);
+        reference_kvmer_set.add_file_to_kvmer_set(&analyze_args.reference, analyze_args.c);
+
+        let stats = kvmer_set.get_stats_with_reference(analyze_args.threshold, &reference_kvmer_set);
+        //kvmer_set.output_stats(&stats);
+        let spectrum = error_profile(&stats, true);
+        output_error_spectrum(&spectrum, analyze_args.v);
+    }
+
+    
     
     /*
     let mut vmer_set = VmerSet::new(analyze_args.v, false);

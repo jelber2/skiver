@@ -61,6 +61,14 @@ fn linear_regression(x: &Vec<f64>, y: &Vec<f64>) -> (f64, f64, f64, f64) {
     (k, range, b, b_range)
 }
 
+fn trimmed_mean(x: &Vec<f64>, trim_fraction: f64) -> f64 {
+    let mut x = x.clone();
+    x.sort_by(f64::total_cmp);
+    let trim_count = (x.len() as f64 * trim_fraction).round() as usize;
+    let trimmed = &x[trim_count..x.len()-trim_count];
+    trimmed.iter().sum::<f64>() / trimmed.len() as f64
+}
+
 fn linear_regression_no_intercept_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     let n: f64 = x.len() as f64;
 
@@ -68,9 +76,13 @@ fn linear_regression_no_intercept_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) ->
         return (0., 0.);
     }
 
-    let ratio = y.iter().zip(x.iter()).map(|(&yi, &xi)| (yi as f64 / xi as f64)).collect::<Vec<f64>>();
+    let ratio = y.iter()
+        .zip(x.iter())
+        .filter_map(|(&yi, &xi)| if xi != 0 { Some(yi as f64 / xi as f64) } else { None })
+        .collect::<Vec<f64>>();
 
     let k: f64 = ratio.iter().copied().sum::<f64>() / ratio.len() as f64;
+    //let k: f64 = trimmed_mean(&ratio, 0.1);
 
     // calculate variance
     let sse: f64 = ratio.iter().map(|r| (r - k) * (r - k)).sum();

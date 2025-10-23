@@ -143,7 +143,7 @@ pub const BASES_TO_SUBSTITUTION_CANONICAL: [[Option<EditOperation>; 4]; 4] = {
 
     arr[3][0] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::AT));
     arr[3][1] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::CT));
-    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::TG));
+    arr[3][2] = Some(EditOperation::SUBSTITUTION(SubstitutionOperations::GT));
 
     arr
 };
