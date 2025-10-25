@@ -1,16 +1,24 @@
-use log::warn;
+use log::{info, warn, error};
 use needletail::parse_fastx_file;
+use serde::{Serialize, Deserialize};
+
+use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::{prelude::*, BufReader};
+use std::path::Path;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::{seeding::*, types::*, utils::*, constants::*};
 
-
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct KVmerSet {
     pub key_size: u8,
     pub value_size: u8,
     pub kv_size: u8,
+    pub num_kvmers: u32,
     pub key_value_map: HashMap<u64, HashMap<u64, u32>>,
 
     // utilities to extract key and value from a kmer hash
@@ -33,6 +41,7 @@ impl KVmerSet {
             key_size,
             value_size,
             kv_size: key_size + value_size,
+            num_kvmers: 0,
             key_value_map: HashMap::new(),
             key_mask: k_mask,
             value_mask: v_mask,
@@ -203,6 +212,7 @@ impl KVmerSet {
             let count = entry.entry(value).or_insert(0);
             *count += 1;
         }
+        self.num_kvmers += seed_vec.len() as u32;
     }
 
 
@@ -483,11 +493,11 @@ impl KVmerSet {
         // Number of time a one-edit neighbor of the consensus value appears
         let mut neighbor_counts: Vec<u32> = Vec::new();
 
+        // for debugging: the number of k-mers that the read set shares with the reference
+        let mut shared_kmer_count: u32 = 0;
+
         for (key, ref_value_map) in &reference.key_value_map {
-            if ref_value_map.len() > 1 {
-                // skip non-unique reference kv-mers
-                continue;
-            }
+            
             if !self.key_value_map.contains_key(&key) {
                 continue;
             }
@@ -510,6 +520,12 @@ impl KVmerSet {
                 }
             }
             let consensus_count = *value_map.get(&consensus_value).unwrap_or(&0);
+            shared_kmer_count += sum_count;
+
+            if ref_value_map.len() > 1 {
+                // skip non-unique reference kv-mers
+                continue;
+            }
 
             // [FIXME] skip if max_value != consensus_value?
 
@@ -562,6 +578,10 @@ impl KVmerSet {
             total_counts.push(sum_count);
             neighbor_counts.push(num_neighbors);
         }
+
+        println!("Total count of kvmers that match reference: {}", shared_kmer_count);
+        println!("Number of kvmers in read set: {}", self.num_kvmers);
+        println!("Proportion of kvmers that match reference: {:.4}%", shared_kmer_count as f64 / self.num_kvmers as f64 * 100.);
 
         KVmerStats {
             k: self.key_size,
@@ -616,6 +636,43 @@ impl KVmerSet {
                 }
             }
             print!("\n")
+        }
+    }
+
+    pub fn dump(&self, output_dir: &str) {
+
+        //let mut file = &mut File::create_new(output_dir).unwrap();
+        let mut writer = BufWriter::new(
+            File::create(&output_dir)
+                .expect(&format!("{} path not valid; exiting ", output_dir)),
+        );
+        //let config = bincode::config::standard().with_big_endian().with_fixed_int_encoding();
+
+        bincode::serialize_into(&mut writer, &self).unwrap();
+        info!("Sketching complete.");
+    }
+
+    pub fn load(&mut self, input_file: &str) {
+        let file = File::open(input_file).expect(&format!("The sketch `{}` could not be opened. Exiting", input_file));
+        let reader = BufReader::with_capacity(10_000_000, file);
+        //let reader = BufReader::new(file);
+        let that: KVmerSet = bincode::deserialize_from(reader)
+            .expect(&format!(
+                "The sketch `{}` is not a valid sketch.",
+                &input_file
+            ));
+
+        // load the data into self
+        if self.key_size != that.key_size || self.value_size != that.value_size {
+            warn!("Key size or value size does not match when loading KVmerSet from file. Skipping input file {}.", input_file);
+        } else {
+            for (kmer, value_map) in that.key_value_map {
+                let entry = self.key_value_map.entry(kmer).or_insert_with(HashMap::new);
+                for (value, count) in value_map {
+                    let count_entry = entry.entry(value).or_insert(0);
+                    *count_entry += count;
+                }
+            }
         }
     }
 

@@ -106,3 +106,17 @@ pub fn _show_neighbors(kmer: u64, k: u8, bidirectional: bool) {
         println!("Neighbor: {}, Operation: {:?}", _kmer_to_string(neighbor, k), op);
     }
 }
+
+pub fn is_fastx_file(file_path: &str) -> bool {
+    // Check if a file is in FASTA or FASTQ format based on its extension
+    let lower_path = file_path.to_lowercase();
+    let fastx_extensions = [".fa", ".fna", ".fasta", ".fa.gz", ".fna.gz", ".fasta.gz",
+                            ".fq", ".fnq", ".fastq", ".fq.gz", ".fnq.gz", ".fastq.gz"];
+    fastx_extensions.iter().any(|ext| lower_path.ends_with(ext))
+}
+
+pub fn is_sketch_file(file_path: &str) -> bool {
+    // Check if a file is a kv-mer sketch file based on its extension
+    let lower_path = file_path.to_lowercase();
+    lower_path.ends_with(".kvmer")
+}

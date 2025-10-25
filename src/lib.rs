@@ -6,6 +6,7 @@ pub mod analyze;
 pub mod cmdline;
 pub mod inference;
 pub mod utils;
+pub mod sketch;
 pub mod constants;
 
 #[cfg(target_arch = "x86_64")]

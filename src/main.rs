@@ -1,6 +1,7 @@
 use clap::Parser;
 use kvmer::cmdline::*;
 use kvmer::analyze;
+use kvmer::sketch;
 
 //Use this allocator when statically compiling
 //instead of the default
@@ -20,6 +21,7 @@ fn main() {
 //    }));
     let cli = Cli::parse();
     match cli.mode {
+        Mode::Sketch(sketch_args) => sketch::sketch(sketch_args),
         Mode::Analyze(analyze_args) => analyze::analyze(analyze_args),
     }
 }

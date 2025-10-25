@@ -92,6 +92,18 @@ fn linear_regression_no_intercept_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) ->
     (k, range)
 }
 
+fn sum_mean(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
+    let n: f64 = x.len() as f64;
+
+    if n == 0. {
+        return (0., 0.);
+    }
+
+    let sum_x: f64 = x.iter().map(|&xi| xi as f64).sum();
+    let sum_y: f64 = y.iter().map(|&yi| yi as f64).sum();
+
+    (sum_x / sum_y, 0.)
+}
 
 fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
     let mut x: Vec<u32> = Vec::new();
@@ -112,7 +124,8 @@ fn infer_p_over_v(stats: &KVmerStats, v: u8) -> f64 {
     let y = &stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
     println!("Number of data = {}", x.len());
 
-    linear_regression_no_intercept_heteroskedastic(x, y).0 / v as f64
+    //linear_regression_no_intercept(x, y).0 / v as f64
+    y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64 / v as f64
 }
 
 

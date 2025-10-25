@@ -1,16 +1,24 @@
 
 use crate::kvmer;
 use crate::kvmer::*;
+use crate::utils::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
 use std::collections::HashMap;
+use log::{info, warn};
 
 pub fn analyze(analyze_args: AnalyzeArgs) {
     
     let mut kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, false);
     for file in &analyze_args.files {
-        kvmer_set.add_file_to_kvmer_set(file, analyze_args.c);
+        if is_fastx_file(file) {
+            kvmer_set.add_file_to_kvmer_set(file, analyze_args.c);
+        } else if is_sketch_file(file) {
+            kvmer_set.load(file);
+        } else {
+            warn!("File format not recognized for file: {}. Skipping.", file);
+        }
     }
 
     if analyze_args.reference.is_empty() {
@@ -25,7 +33,7 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
 
         let stats = kvmer_set.get_stats_with_reference(analyze_args.threshold, &reference_kvmer_set);
         //kvmer_set.output_stats(&stats);
-        let spectrum = error_profile(&stats, true);
+        let spectrum = error_profile(&stats, false);
         output_error_spectrum(&spectrum, analyze_args.v);
     }
 

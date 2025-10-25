@@ -10,11 +10,11 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Mode {
     /// Sketch the given sequencing files into kv-mer sketches.
-    //#[clap(display_order = 1)]
-    //Sketch(AnalyzeArgs),
+    #[clap(display_order = 1)]
+    Sketch(SketchArgs),
 
     /// Analyze a given sequencing file.
-    #[clap(display_order = 1)]
+    #[clap(display_order = 2)]
     Analyze(AnalyzeArgs),
 }
 
@@ -26,11 +26,14 @@ pub struct SketchArgs {
     #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 6, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short, default_value_t = 200, help_heading = "ALGORITHM", help = "Subsampling rate.")]
+    #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
+
+    #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
+    pub output_path: String,
 }
 
 
@@ -42,10 +45,10 @@ pub struct AnalyzeArgs {
     #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 6, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short, default_value_t = 200, help_heading = "ALGORITHM", help = "Subsampling rate.")]
+    #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
 
     #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Threshold for consensus.")]
