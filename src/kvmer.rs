@@ -673,6 +673,7 @@ impl KVmerSet {
                     *count_entry += count;
                 }
             }
+            self.num_kvmers += that.num_kvmers;
         }
     }
 
