@@ -10,7 +10,7 @@ use log::{info, warn};
 
 pub fn analyze(analyze_args: AnalyzeArgs) {
     
-    let mut kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, false);
+    let mut kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, analyze_args.bidirectional);
     for file in &analyze_args.files {
         if is_fastx_file(file) {
             kvmer_set.add_file_to_kvmer_set(file, analyze_args.c);
@@ -21,20 +21,23 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
         }
     }
 
-    if analyze_args.reference.is_empty() {
-        //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
-        let stats = kvmer_set.get_stats(analyze_args.threshold);
-        //kvmer_set.output_stats(&stats);
-        let spectrum = error_profile(&stats, false);
-        output_error_spectrum(&spectrum, analyze_args.v);
-    } else {
-        let mut reference_kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, true);
-        reference_kvmer_set.add_file_to_kvmer_set(&analyze_args.reference, analyze_args.c);
+    if let Some(reference) = &analyze_args.reference {
+
+         let mut reference_kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, true);
+        reference_kvmer_set.add_file_to_kvmer_set(reference, analyze_args.c);
 
         let stats = kvmer_set.get_stats_with_reference(analyze_args.threshold, &reference_kvmer_set);
         //kvmer_set.output_stats(&stats);
-        let spectrum = error_profile(&stats, false);
+        let spectrum = error_profile(&stats, analyze_args.bidirectional);
         output_error_spectrum(&spectrum, analyze_args.v);
+        
+    } else {
+        //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
+        let stats = kvmer_set.get_stats(analyze_args.threshold);
+        //kvmer_set.output_stats(&stats);
+        let spectrum = error_profile(&stats, analyze_args.bidirectional);
+        output_error_spectrum(&spectrum, analyze_args.v);
+       
     }
 
     

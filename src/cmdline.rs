@@ -54,6 +54,9 @@ pub struct AnalyzeArgs {
     #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Threshold for consensus.")]
     pub threshold: u32,
 
-    #[clap(short, default_value_t = String::new(), help_heading = "ALGORITHM", help = "Reference genomes.")]
-    pub reference: String,
+    #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
+    pub bidirectional: bool,
+
+    #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
+    pub reference: Option<String>,
 }

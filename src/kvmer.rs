@@ -48,87 +48,7 @@ impl KVmerSet {
             bidirectional,
         }
     }
-    
-
-    pub fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
-        // get all the values with edit distance 1 from the input value
-        
-        let mut neighbors: HashMap<u64, EditOperation> = HashMap::new();
-        let bases = [0, 1, 2, 3]; // A, C, G, T
-
-        for i in 0..self.value_size {
-            let shift = i * 2;
-            
-            // Substitutions
-            for &b in &bases {
-                let current_base = (value >> shift) & 0b11;
-                if b != current_base {
-                    let neighbor = (value & !(0b11 << shift)) | (b << shift);
-                    if self.bidirectional {
-                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
-                    } else {
-                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
-                    }
-                    
-                }
-            }
-
-            // Indels
-            for &b in &bases {
-                if shift == 0 && b == (value >> shift) & 0b11 {
-                    continue; // skip the original base for the first position
-                }
-                
-                let left_part = (value >> (shift + 2)) << ((shift + 2));
-                let right_part = value & ((1 << (shift + 2)) - 1);
-                let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
-                if self.bidirectional {
-                    neighbors.entry(neighbor_insert)
-                    .and_modify(|op|
-                        if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_INSERTION_CANONICAL[b as usize].unwrap());
-                } else {
-                    neighbors.entry(neighbor_insert)
-                    .and_modify(|op|
-                        if *op != BASES_TO_INSERTION[b as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
-                }
-                
-                
-                
-                let right_part = value & ((1 << shift) - 1);
-                let neighbor_delete = left_part | (right_part << 2) | b;
-                let original_base = (value >> shift) & 0b11;
-                if self.bidirectional {
-                    neighbors.entry(neighbor_delete)
-                    .and_modify(|op| 
-                        if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap());
-                } else {
-                    neighbors.entry(neighbor_delete)
-                    .and_modify(|op| 
-                        if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
-                }
-            }
-        }
-
-        neighbors
-
-    }
-
+  
 
 
     pub fn to_value_string(&self, kmer: u64) -> String {
@@ -153,15 +73,6 @@ impl KVmerSet {
             s.push(crate::types::SEQ_TO_BYTE[base]);
         }
         String::from_utf8(s).unwrap()
-    }
-
-    pub fn show_neighbors(&self, value: u64) {
-        // for debugging: print all the neighbors of a value
-
-        let neighbors = self._get_neighbors(value);
-        for (neighbor, op) in neighbors {
-            println!("Neighbor: {}, Operation: {:?}", self.to_value_string(neighbor), op);
-        }
     }
 
     pub fn homopolymer_length(&self, key: u64, value: u64) -> u32 {
@@ -303,8 +214,25 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_neighbors_up_to_v(&self, consensus_value: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
-        let consensus_up_to_v = consensus_value >> ((self.value_size - v) * 2);
+    fn _num_neighbors_up_to_v(&self, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
+        // find consensus value up to v
+        let mut value_map_up_to_v: HashMap<u64, u32> = HashMap::new();
+        for (neighbor, count) in value_map {
+            let value_up_to_v = neighbor >> ((self.value_size - v) * 2);
+            value_map_up_to_v.entry(value_up_to_v)
+                .and_modify(|c| *c += *count)
+                .or_insert(*count);
+        }
+
+        let mut max_count = 0;
+        let mut consensus_up_to_v: u64 = 0;
+        for (value, count) in &value_map_up_to_v {
+            if *count > max_count {
+                max_count = *count;
+                consensus_up_to_v = *value;
+            }
+        }
+
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
         let mut num_neighbors: u32 = 0;
         let mut num_consensus: u32 = 0;
@@ -361,8 +289,6 @@ impl KVmerSet {
                 continue;
             }
 
-            
-
             // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<EditOperation, u32> = HashMap::new();
             let neighbors = _get_neighbors(max_value, self.value_size, self.bidirectional);
@@ -373,7 +299,10 @@ impl KVmerSet {
 
             // find the error and consensus up to v counts
             for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
-                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(max_value, v, self.bidirectional, value_map);
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(v, self.bidirectional, value_map);
+                //if consensus_up_to_v <= threshold {
+                //    continue;
+                //}
                 consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
                 error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(neighbor_up_to_v);
             }
@@ -546,7 +475,7 @@ impl KVmerSet {
 
             // find the error and consensus up to v counts
             for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
-                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(consensus_value, v, self.bidirectional, value_map);
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(v, self.bidirectional, value_map);
                 consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
                 error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(neighbor_up_to_v);
             }
