@@ -119,7 +119,7 @@ fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
 }
 
 
-fn infer_p_over_v(stats: &KVmerStats, v: u8) -> f64 {
+fn infer_p(stats: &KVmerStats, v: u8) -> f64 {
     let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
     let y = &stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
 
@@ -127,11 +127,11 @@ fn infer_p_over_v(stats: &KVmerStats, v: u8) -> f64 {
     // add pseudocounts
     //let x: Vec<u32> = x.iter().map(|&xi| xi + alpha as u32).collect();
     //let y: Vec<u32> = y.iter().map(|&yi| yi + alpha as u32).collect();
-    println!("Number of data = {}", x.len());
+    //println!("Number of data = {}", x.len());
 
     //linear_regression_no_intercept_heteroskedastic(x, y).0 / v as f64
     //linear_regression_no_intercept(&x, &y).0 / v as f64
-    y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64 / v as f64
+    y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
 }
 
 
@@ -141,9 +141,9 @@ fn total_error_rate(stats: &KVmerStats) -> (f64, f64, f64, f64) {
     let mut y: Vec<f64> = Vec::new();
 
     for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=stats.v {
-        y.push(infer_p_over_v(stats, v as u8));
-        println!("v = {}, p/v = {}", v, y.last().unwrap());
-        x.push(stats.k as f64 + v as f64);
+        y.push(infer_p(stats, v as u8));
+        println!("{},", y.last().unwrap());
+        x.push(v as f64);
     }
 
     linear_regression(&x, &y)
@@ -220,5 +220,5 @@ pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
     }
 
     let (k, k_range, b, b_range) = spectrum.total_error_rate;
-    println!("Total Error Rate: {:.3}%, variance: {:.3}", b * 100., (-k).sqrt());
+    println!("Total Error Rate: {:.3}%", k + b);
 }
