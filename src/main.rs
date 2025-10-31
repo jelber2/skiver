@@ -2,6 +2,7 @@ use clap::Parser;
 use kvmer::cmdline::*;
 use kvmer::analyze;
 use kvmer::sketch;
+use kvmer::mapping;
 
 //Use this allocator when statically compiling
 //instead of the default
@@ -23,5 +24,6 @@ fn main() {
     match cli.mode {
         Mode::Sketch(sketch_args) => sketch::sketch(sketch_args),
         Mode::Analyze(analyze_args) => analyze::analyze(analyze_args),
+        Mode::Mapping(mapping_args) => mapping::mapping(mapping_args),
     }
 }

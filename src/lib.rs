@@ -1,13 +1,14 @@
 pub mod kvmer;
+pub mod kmer;
 pub mod seeding;
 pub mod types;
-pub mod profile;
 pub mod analyze;
 pub mod cmdline;
 pub mod inference;
 pub mod utils;
 pub mod sketch;
 pub mod constants;
+pub mod mapping;
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx2_seeding;

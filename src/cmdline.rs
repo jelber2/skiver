@@ -16,6 +16,10 @@ pub enum Mode {
     /// Analyze a given sequencing file.
     #[clap(display_order = 2)]
     Analyze(AnalyzeArgs),
+
+    /// For testing only: Try mapping the reads to reference genomes, and check how many k-mers are error-free.
+    #[clap(display_order = 3)]
+    Mapping(MappingArgs),
 }
 
 #[derive(Args, Default)]
@@ -59,4 +63,31 @@ pub struct AnalyzeArgs {
 
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: Option<String>,
+}
+
+#[derive(Args, Default)]
+pub struct MappingArgs {
+    #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
+    pub files: Vec<String>,
+
+    #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
+    pub k: u8,
+
+    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
+    pub v: u8,
+
+    #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
+    pub c: usize,
+
+    #[clap(short, default_value_t = 100, help_heading = "ALGORITHM", help = "Read sampling rate.")]
+    pub sample_rate: usize,
+
+    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Threshold for consensus.")]
+    pub threshold: u32,
+
+    #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
+    pub bidirectional: bool,
+
+    #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
+    pub reference: String,
 }

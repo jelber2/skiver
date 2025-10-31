@@ -1,5 +1,3 @@
-
-use crate::kvmer;
 use crate::kvmer::*;
 use crate::utils::*;
 use crate::inference::*;

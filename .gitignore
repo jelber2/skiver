@@ -5,3 +5,5 @@ log
 test.sh
 *.txt
 *.kvmer
+*.csv
+*.log

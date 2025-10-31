@@ -220,5 +220,5 @@ pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
     }
 
     let (k, k_range, b, b_range) = spectrum.total_error_rate;
-    println!("Total Error Rate: {:.3}%", k + b);
+    println!("Slope: {:.6}, Intercept: {:.6}", k, b);
 }
