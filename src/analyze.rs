@@ -21,7 +21,7 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
 
     if let Some(reference) = &analyze_args.reference {
 
-         let mut reference_kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, true);
+        let mut reference_kvmer_set = KVmerSet::new(analyze_args.k, analyze_args.v, true);
         reference_kvmer_set.add_file_to_kvmer_set(reference, analyze_args.c);
 
         let stats = kvmer_set.get_stats_with_reference(analyze_args.threshold, &reference_kvmer_set);
@@ -32,7 +32,7 @@ pub fn analyze(analyze_args: AnalyzeArgs) {
     } else {
         //println!("Error rate: {}", kvmer_set.get_stats(analyze_args.threshold));
         let stats = kvmer_set.get_stats(analyze_args.threshold);
-        //kvmer_set.output_stats(&stats);
+        //kvmer_set.output_stats(&stats, true, true);
         let spectrum = error_profile(&stats, analyze_args.bidirectional);
         output_error_spectrum(&spectrum, analyze_args.v);
        

@@ -349,54 +349,6 @@ impl KVmerSet {
             consensus_up_to_v_counts,
             error_up_to_v_counts,
         }
-    /*
-
-        if total_counts.is_empty() {
-            0.0
-        } else {
-            // compute the overall error rate
-            let p_0: f64 = consensus_counts.iter().sum::<u32>() as f64 / total_counts.iter().sum::<u32>() as f64;
-
-            let p_1: f64 = error_counts.iter().sum::<u32>() as f64 / total_counts.iter().sum::<u32>() as f64;
-
-            let mut p_1_over_p_0 = Vec::new();
-            for i in 0..consensus_counts.len() {
-                p_1_over_p_0.push(error_counts[i] as f64 / (consensus_counts[i] as f64 * (self.value_size as f64)));
-            }
-
-            //println!("{:?}", p_1_over_p_0);
-
-            // p_1 / p_0 estimator
-            //let error_rate = p_1 / p_0 / (self.value_size as f64);
-
-            // p_0 estimator
-            //let error_rate = - p_0.ln() / self.value_size as f64;
-            println!("Number of consensus kmers: {}", consensus_counts.len());
-
-            //p_1_over_p_0.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            //let error_rate = p_1_over_p_0[p_1_over_p_0.len() / 2];// / (self.value_size as f64);
-
-            //let error_rate = p_1_over_p_0.iter().sum::<f64>() / (p_1_over_p_0.len() as f64);
-
-            
-            /*
-            let mut p_0_vec = Vec::new();
-            for i in 0..consensus_counts.len() {
-                p_0_vec.push(consensus_counts[i] as f64 / total_counts[i] as f64);
-            }
-            p_0_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let p_0_mean = p_0_vec.iter().sum::<f64>() / (p_0_vec.len() as f64);
-
-            
-
-
-            let error_rate = 1.0 - p_0_mean.powf(1.0 / self.value_size as f64);
-            */
-            
-            error_rate
-        }
-            */
-
     }
 
     pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
@@ -528,23 +480,35 @@ impl KVmerSet {
 
     }
 
-    pub fn output_stats(&self, stats: &KVmerStats) {
-        print!("key\tconsensus_value\thomopolymer_length\tconsensus_count\tneighbor_count\ttotal_count");
-        if self.bidirectional {
-            for op in ALL_OPERATIONS_CANONICAL {
-                print!("\t{:?}", op);
-            }
-        } else {
-            for op in ALL_OPERATIONS {
-                print!("\t{:?}", op);
+    pub fn output_stats(&self, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
+        // general info
+        print!("key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count");
+        // errors
+        if show_error_types {
+            if self.bidirectional {
+                for op in ALL_OPERATIONS_CANONICAL {
+                    print!(",{:?}", op);
+                }
+            } else {
+                for op in ALL_OPERATIONS {
+                    print!(",{:?}", op);
+                }
             }
         }
+        // for p vs. v regression
+        if show_error_vs_v {
+            for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+                print!(",consensus_count_up_to_v{}", v);
+                print!(",error_count_up_to_v{}", v);
+            }
+        }
+
         print!("\n");
 
 
         for i in 0..stats.keys.len() {
             print!(
-                "{}\t{}\t{}\t{}\t{}\t{}",
+                "{},{},{},{},{},{}",
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
                 self.homopolymer_length(stats.keys[i], stats.consensus_values[i]),
@@ -552,16 +516,24 @@ impl KVmerSet {
                 stats.neighbor_counts[i],
                 stats.total_counts[i],
             );
-            if self.bidirectional {
-                
-                for op in ALL_OPERATIONS_CANONICAL {
-                    let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
-                    print!("\t{}", value);
+            if show_error_types {
+                if self.bidirectional {
+                    for op in ALL_OPERATIONS_CANONICAL {
+                        let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
+                        print!(",{}", value);
+                    }
+                } else {
+                    for op in ALL_OPERATIONS {
+                        let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
+                        print!(",{}", value);
+                    }
                 }
-            } else {
-                for op in ALL_OPERATIONS {
-                    let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
-                    print!("\t{}", value);
+            }
+            if show_error_vs_v {
+                for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+                    let consensus_count_up_to_v = stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize][i];
+                    let error_count_up_to_v = stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize][i];
+                    print!(",{},{}", consensus_count_up_to_v, error_count_up_to_v);
                 }
             }
             print!("\n")

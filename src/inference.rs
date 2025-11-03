@@ -92,6 +92,36 @@ fn linear_regression_no_intercept_heteroskedastic(x: &Vec<u32>, y: &Vec<u32>) ->
     (k, range)
 }
 
+fn median_of_means(x: &Vec<u32>, y: &Vec<u32>, num_means: usize) -> f64 {
+    let n: usize = x.len();
+
+    if n == 0 {
+        return 0.;
+    }
+
+    let chunk_size = (n + num_means - 1) / num_means; // ceiling division
+    let mut means: Vec<f64> = Vec::new();
+
+    for chunk in x.chunks(chunk_size).zip(y.chunks(chunk_size)) {
+        let (x_chunk, y_chunk) = chunk;
+        let sum_x: f64 = x_chunk.iter().map(|&xi| xi as f64).sum();
+        let sum_y: f64 = y_chunk.iter().map(|&yi| yi as f64).sum();
+
+        if sum_x != 0. {
+            means.push(sum_y / sum_x);
+        }
+    }
+
+    means.sort_by(f64::total_cmp);
+    let mid = means.len() / 2;
+    if means.len() % 2 == 0 {
+        (means[mid - 1] + means[mid]) / 2.
+    } else {
+        means[mid]
+    }
+
+}
+
 fn sum_mean(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     let n: f64 = x.len() as f64;
 
@@ -129,9 +159,10 @@ fn infer_p(stats: &KVmerStats, v: u8) -> f64 {
     //let y: Vec<u32> = y.iter().map(|&yi| yi + alpha as u32).collect();
     //println!("Number of data = {}", x.len());
 
-    //linear_regression_no_intercept_heteroskedastic(x, y).0 / v as f64
-    //linear_regression_no_intercept(&x, &y).0 / v as f64
+    //linear_regression_no_intercept_heteroskedastic(x, y).0
+    //linear_regression_no_intercept(&x, &y).0
     y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+    //median_of_means(x, y, 10) // / v as f64
 }
 
 

@@ -107,22 +107,32 @@ impl KmerSet {
         }
     }
 
-    
+    /**
+     * Estimate the kmer match rate for the given read file.
+     * The rate is calculated by the average kmer match rate across all reads,
+     * excluding reads that have zero matched kmers.
+     */
     pub fn query_file(
         &self,
         seq_file: &str,
         c: usize,
         sample_per_num_read: usize,
         bidirectional: bool,
-    ) {
+        print_verbose: bool,
+    ) -> (u32, u32) {
         let reader = parse_fastx_file(&seq_file);
 
-        let matched_kmers: Vec<u32> = Vec::new();
-        let total_kmers: Vec<u32> = Vec::new();
+        //let matched_kmers: Vec<u32> = Vec::new();
+        //let total_kmers: Vec<u32> = Vec::new();
+
+        let mut matched_kmers: u32 = 0;
+        let mut total_kmers: u32 = 0;
 
         let mut read_count: usize = 0;
         //println!("Reading file: {}", seq_file);
-        println!("total,matched");
+        if print_verbose {
+            println!("total,matched");
+        }
         if !reader.is_ok() {
             //println!("Not OK Reading file: {}", seq_file);
             println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
@@ -144,7 +154,13 @@ impl KmerSet {
                         let (matched, total) = self.query_seed_vector(&kmer_vec);
                         //matched_kmers.push(matched);
                         //total_kmers.push(total);
-                        println!("{},{}", total, matched);
+                        if print_verbose {
+                            println!("{},{}", total, matched);
+                        }
+                        if matched > 0 {
+                            matched_kmers += matched;
+                            total_kmers += total;
+                        }
                     }
                     Err(e) => {
                         warn!("Error reading record: {}", e);
@@ -153,6 +169,7 @@ impl KmerSet {
             }
             //println!("Total kmers: {}, Matched kmers: {}, Match rate: {:.4}%", total_kmers, matched_kmers, matched_kmers as f64 / total_kmers as f64 * 100.);
         }
+        (matched_kmers, total_kmers)
     }
 
 }
