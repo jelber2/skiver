@@ -19,7 +19,7 @@ pub enum Mode {
 
     /// For testing only: Try mapping the reads to reference genomes, and check how many k-mers are error-free.
     #[clap(display_order = 3)]
-    Mapping(MappingArgs),
+    Map(MapArgs),
 }
 
 #[derive(Args, Default)]
@@ -66,15 +66,12 @@ pub struct AnalyzeArgs {
 }
 
 #[derive(Args, Default)]
-pub struct MappingArgs {
+pub struct MapArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
     #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
-
-    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
-    pub v: u8,
 
     #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,

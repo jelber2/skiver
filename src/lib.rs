@@ -1,5 +1,4 @@
 pub mod kvmer;
-pub mod kmer;
 pub mod seeding;
 pub mod types;
 pub mod analyze;
