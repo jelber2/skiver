@@ -1,17 +1,21 @@
 
-use crate::kvmer;
+
 use crate::kvmer::*;
-use crate::inference::*;
+use simple_logger::SimpleLogger;
+use log::info;
 use crate::cmdline::SketchArgs;
 
-use std::collections::HashMap;
 
 pub fn sketch(args: SketchArgs) {
+    SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+    info!("Processing query files...");
     
     let mut kvmer_set = KVmerSet::new(args.k, args.v, false);
     for file in &args.files {
         kvmer_set.add_file_to_kvmer_set(file, args.c);
     }
+    info!("Finished processing query files.");
 
     kvmer_set.dump(&args.output_path);
+    info!("Sketch saved to {}", args.output_path);
 }

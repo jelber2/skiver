@@ -214,7 +214,7 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_neighbors_up_to_v(&self, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
+    fn _num_neighbors_up_to_v(&self, consensus: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
         // find consensus value up to v
         let mut value_map_up_to_v: HashMap<u64, u32> = HashMap::new();
         for (neighbor, count) in value_map {
@@ -224,14 +224,19 @@ impl KVmerSet {
                 .or_insert(*count);
         }
 
-        let mut max_count = 0;
+        /*
         let mut consensus_up_to_v: u64 = 0;
+         
+        let mut max_count = 0;
+        
         for (value, count) in &value_map_up_to_v {
             if *count > max_count {
                 max_count = *count;
                 consensus_up_to_v = *value;
             }
         }
+        */
+        let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
         let mut num_neighbors: u32 = 0;
@@ -299,7 +304,7 @@ impl KVmerSet {
 
             // find the error and consensus up to v counts
             for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
-                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(v, self.bidirectional, value_map);
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(max_value, v, self.bidirectional, value_map);
                 //if consensus_up_to_v <= threshold {
                 //    continue;
                 //}
@@ -427,7 +432,7 @@ impl KVmerSet {
 
             // find the error and consensus up to v counts
             for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
-                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(v, self.bidirectional, value_map);
+                let (consensus_up_to_v, neighbor_up_to_v) = self._num_neighbors_up_to_v(max_value, v, self.bidirectional, value_map);
                 consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
                 error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(neighbor_up_to_v);
             }
