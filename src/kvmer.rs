@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
+use std::fmt;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -224,7 +225,7 @@ impl KVmerSet {
                 .or_insert(*count);
         }
 
-        /*
+        
         let mut consensus_up_to_v: u64 = 0;
          
         let mut max_count = 0;
@@ -235,8 +236,8 @@ impl KVmerSet {
                 consensus_up_to_v = *value;
             }
         }
-        */
-        let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
+        
+        //let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
         let mut num_neighbors: u32 = 0;
@@ -485,34 +486,36 @@ impl KVmerSet {
 
     }
 
-    pub fn output_stats(&self, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
+    pub fn output_stats(&self, output_path: String, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
+        // create file for output
+        let mut writer = File::create(&output_path).unwrap();
         // general info
-        print!("key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count");
+        writeln!(writer, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         // errors
         if show_error_types {
             if self.bidirectional {
                 for op in ALL_OPERATIONS_CANONICAL {
-                    print!(",{:?}", op);
+                    write!(writer, ",{:?}", op).unwrap();
                 }
             } else {
                 for op in ALL_OPERATIONS {
-                    print!(",{:?}", op);
+                    write!(writer, ",{:?}", op).unwrap();
                 }
             }
         }
         // for p vs. v regression
         if show_error_vs_v {
             for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
-                print!(",consensus_count_up_to_v{}", v);
-                print!(",error_count_up_to_v{}", v);
+                write!(writer, ",consensus_count_up_to_v{}", v).unwrap();
+                write!(writer, ",error_count_up_to_v{}", v).unwrap();
             }
         }
 
-        print!("\n");
+        writeln!(writer).unwrap();
 
 
         for i in 0..stats.keys.len() {
-            print!(
+            writeln!(writer,
                 "{},{},{},{},{},{}",
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
@@ -520,17 +523,17 @@ impl KVmerSet {
                 stats.consensus_counts[i],
                 stats.neighbor_counts[i],
                 stats.total_counts[i],
-            );
+            ).unwrap();
             if show_error_types {
                 if self.bidirectional {
                     for op in ALL_OPERATIONS_CANONICAL {
                         let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
-                        print!(",{}", value);
+                        write!(writer, ",{}", value).unwrap();
                     }
                 } else {
                     for op in ALL_OPERATIONS {
                         let value = *(stats.error_counts[i]).get(&op).unwrap_or(&0);
-                        print!(",{}", value);
+                        write!(writer, ",{}", value).unwrap();
                     }
                 }
             }
@@ -538,10 +541,10 @@ impl KVmerSet {
                 for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
                     let consensus_count_up_to_v = stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize][i];
                     let error_count_up_to_v = stats.error_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize][i];
-                    print!(",{},{}", consensus_count_up_to_v, error_count_up_to_v);
+                    write!(writer, ",{},{}", consensus_count_up_to_v, error_count_up_to_v).unwrap();
                 }
             }
-            print!("\n")
+            writeln!(writer).unwrap();
         }
     }
 

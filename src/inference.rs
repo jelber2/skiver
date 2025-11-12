@@ -161,7 +161,11 @@ fn infer_p(stats: &KVmerStats, v: u8) -> f64 {
 
     //linear_regression_no_intercept_heteroskedastic(x, y).0
     //linear_regression_no_intercept(&x, &y).0
-    y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+
+    let y_sum = y.iter().sum::<u32>() as f64;
+    let x_sum = x.iter().sum::<u32>() as f64;
+    //y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+    y_sum / (x_sum + y_sum)
     //median_of_means(x, y, 10) // / v as f64
 }
 

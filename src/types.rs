@@ -57,6 +57,10 @@ pub const BYTE_TO_SEQ: [u8; 256] = {
 
 pub const SEQ_TO_BYTE: [u8; 4] = [b'A', b'C', b'G', b'T'];
 
+
+/**
+ * Definitions for edit operations.
+ */
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SubstitutionOperations {
     AC,
@@ -227,6 +231,9 @@ pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 11] = [
     EditOperation::AMBIGUOUS,
 ];
 
+/**
+ * kv-mer statistics for downstream analysis.
+ */
 pub struct KVmerStats {
     pub k: u8,
     pub v: u8,
