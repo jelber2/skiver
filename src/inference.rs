@@ -170,12 +170,19 @@ fn infer_p(stats: &KVmerStats, v: u8) -> f64 {
 }
 
 fn infer_prob_next_base(stats: &KVmerStats, v: u8) -> f64 {
-    let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
-    let y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
-    let z: Vec<u32> = y.iter().zip(x.iter()).map(|(&yi, &xi)| xi - yi).collect();
+    if v - MIN_VALUE_FOR_ERROR_ESTIMATION == 0 {
+        let x = &stats.total_counts;
+        let y = &stats.consensus_up_to_v_counts[0];
+        
+        y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+    } else {
+        let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
+        let y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
 
-    //z.iter().sum::<u32>() as f64 / y.iter().sum::<u32>() as f64
-    y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+        //z.iter().sum::<u32>() as f64 / y.iter().sum::<u32>() as f64
+        y.iter().sum::<u32>() as f64 / x.iter().sum::<u32>() as f64
+    }
+    
 }
 
 
@@ -191,7 +198,7 @@ fn total_error_rate(stats: &KVmerStats) -> (f64, f64, f64, f64) {
         x.push(v as f64);
     }
     */
-    for v in (MIN_VALUE_FOR_ERROR_ESTIMATION + 1)..stats.v {
+    for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..stats.v {
         y.push(infer_prob_next_base(stats, v as u8));
         println!("{},", y.last().unwrap());
         x.push(v as f64);

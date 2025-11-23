@@ -87,4 +87,7 @@ pub struct MapArgs {
 
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: String,
+
+    #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
+    pub print_verbose: bool,
 }
