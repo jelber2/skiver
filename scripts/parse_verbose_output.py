@@ -42,10 +42,10 @@ class KVMerReport:
             v += 1
         return v_values, p00_stats
     
-    def analyze_with_plot(self):
+    def analyze_with_plot(self, filter=None):
         # Plot lambda vs. v and p00 vs. v
-        v_values, lambda_stats = self.calculate_lambda_stats()
-        v_values, p00_stats = self.calculate_p00_stats()
+        v_values, lambda_stats = self.calculate_lambda_stats(filter=filter)
+        v_values, p00_stats = self.calculate_p00_stats(filter=filter)
         plt.figure(figsize=(12, 6))
         
         plt.subplot(1, 2, 1)
@@ -81,14 +81,19 @@ class KVMerReport:
             plt.title('P00 vs. v')
             plt.xlabel('v')
             plt.ylabel('P00')
-            plt.ylim(0.9, 1.0)
+            plt.ylim(0.8, 1.0)
             plt.tight_layout()
             plt.show()
 
 
 if __name__ == "__main__":
-    report = KVMerReport("./ERR3152366_log.csv")
+    report = KVMerReport("./ERR3152366_trim_ref.csv")
+    #report = KVMerReport("./ERR3152366_ref.csv")
+    #report = KVMerReport("./ERR2935851_trim_ref.csv")
+    #report = KVMerReport("./SRR7415629_ref.csv")
+    
     filt = report.report_data_df["homopolymer_length"] > 0
+    #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
     print("Lambda Stats:", lambda_stats)
@@ -99,7 +104,7 @@ if __name__ == "__main__":
     print("P00 Stats:", p00_stats)
     #print("P00 Regression:", p00_regression)
 
-    report.analyze_with_plot()
+    report.analyze_with_plot(filter=filt)
     
 
     

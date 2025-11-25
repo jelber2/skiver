@@ -63,6 +63,9 @@ pub struct AnalyzeArgs {
 
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: Option<String>,
+
+    #[clap(short, help_heading = "OUTPUT", help = "Output file.")]
+    pub output_path: Option<String>,
 }
 
 #[derive(Args, Default)]
