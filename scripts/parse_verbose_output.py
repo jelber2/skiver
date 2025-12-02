@@ -42,10 +42,10 @@ class KVMerReport:
             v += 1
         return v_values, p00_stats
     
-    def analyze_with_plot(self):
+    def analyze_with_plot(self, filter=None):
         # Plot lambda vs. v and p00 vs. v
-        v_values, lambda_stats = self.calculate_lambda_stats()
-        v_values, p00_stats = self.calculate_p00_stats()
+        v_values, lambda_stats = self.calculate_lambda_stats(filter=filter)
+        v_values, p00_stats = self.calculate_p00_stats(filter=filter)
         plt.figure(figsize=(12, 6))
         
         plt.subplot(1, 2, 1)
@@ -81,7 +81,7 @@ class KVMerReport:
             plt.title('P00 vs. v')
             plt.xlabel('v')
             plt.ylabel('P00')
-            plt.ylim(0.9, 1.0)
+            plt.ylim(0, 1.0)
             plt.tight_layout()
             plt.show()
 
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     print("P00 Stats:", p00_stats)
     #print("P00 Regression:", p00_regression)
 
-    report.analyze_with_plot()
+    report.analyze_with_plot(filter=filt)
     
 
     
