@@ -5,6 +5,7 @@ use crate::cmdline::AnalyzeArgs;
 
 use simple_logger::SimpleLogger;
 use log::{info, warn};
+use glob::glob;
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
@@ -13,12 +14,20 @@ pub fn analyze(args: AnalyzeArgs) {
     
     info!("Processing query files...");
     for file in &args.files {
-        if is_fastx_file(file) {
-            kvmer_set.add_file_to_kvmer_set(file, args.c);
-        } else if is_sketch_file(file) {
-            kvmer_set.load(file);
-        } else {
-            warn!("File format not recognized for file: {}. Skipping.", file);
+        for entry in glob(file).expect("Failed to read glob pattern") {
+            match entry {
+                Ok(path) => {
+                    let file_str = path.to_str().unwrap();
+                    if is_fastx_file(file_str) {
+                        kvmer_set.add_file_to_kvmer_set(file_str, args.c);
+                    } else if is_sketch_file(file_str) {
+                        kvmer_set.load(file_str);
+                    } else {
+                        warn!("File format not recognized for file: {}. Skipping.", file_str);
+                    }
+                }
+                Err(e) => warn!("Error reading file: {:?}", e),
+            }
         }
     }
     info!("Finished processing query files.");
