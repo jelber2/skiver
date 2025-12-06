@@ -486,11 +486,11 @@ impl KVmerSet {
 
     }
 
-    pub fn output_stats(&self, output_path: String, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
+    pub fn output_stats(&self, output_path: &String, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
         // create file for output
         let mut writer = File::create(&output_path).unwrap();
         // general info
-        writeln!(writer, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
+        write!(writer, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         // errors
         if show_error_types {
             if self.bidirectional {
@@ -515,7 +515,7 @@ impl KVmerSet {
 
 
         for i in 0..stats.keys.len() {
-            writeln!(writer,
+            write!(writer,
                 "{},{},{},{},{},{}",
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
