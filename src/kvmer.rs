@@ -128,22 +128,25 @@ impl KVmerSet {
     }
 
 
-    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize) {
+    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, trim_front: usize, trim_back: usize) {
+        let start = std::cmp::min(trim_front, string.len());
+        let end = string.len().saturating_sub(trim_back);
+        let string_trimmed = &string[start..end];
         // extract sketched kv-mers from the given sequence string
         #[cfg(any(target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask as i64), self.bidirectional);
+                    extract_markers_avx2_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask as i64), self.bidirectional);
                 }
             } else {
-                fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
+                fmh_seeds_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(string, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
+            fmh_seeds_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
         }
     }
 
@@ -151,6 +154,8 @@ impl KVmerSet {
         &mut self,
         seq_file: &str,
         c: usize,
+        trim_front: usize,
+        trim_back: usize,
     ) {
         let reader = parse_fastx_file(&seq_file);
         //println!("Reading file: {}", seq_file);
@@ -165,7 +170,7 @@ impl KVmerSet {
                     Ok(record) => {
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c);
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, trim_front, trim_back);
                         self.add_seed_vector(&kmer_vec);
                     }
                     Err(e) => {
