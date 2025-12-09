@@ -198,7 +198,7 @@ fn total_error_rate(stats: &KVmerStats) -> (f64, f64, f64, f64) {
         x.push(v as f64);
     }
     */
-    for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..stats.v {
+    for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..=stats.v {
         y.push(infer_prob_next_base(stats, v as u8));
         println!("{},", y.last().unwrap());
         x.push(v as f64);
