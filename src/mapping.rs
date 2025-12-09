@@ -12,14 +12,14 @@ pub fn map(args: crate::cmdline::MapArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
 
     let mut kmer_set = KmerSet::new(args.k, true);
-    kmer_set.add_file_to_kmer_set(&args.reference, args.c);
+    kmer_set.add_file_to_kmer_set(&args.reference, args.c, args.trim_front, args.trim_back);
     info!("Loaded reference file: {}", args.reference);
 
     let mut total_matched: u32 = 0;
     let mut total_kmers: u32 = 0;
     info!("Processing query files...");
     for file in &args.files {
-        let (matched, total) = kmer_set.query_file(file, args.c, args.threshold, args.sample_rate, args.bidirectional, args.print_verbose);
+        let (matched, total) = kmer_set.query_file(file, args.c, args.threshold, args.sample_rate, args.bidirectional, args.print_verbose, args.trim_front, args.trim_back);
 
         total_matched += matched;
         total_kmers += total;
@@ -76,22 +76,24 @@ impl KmerSet {
     }
 
 
-    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, bidirectional: bool) {
+    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, bidirectional: bool, trim_front: usize, trim_back: usize) {
+        let start = std::cmp::min(trim_front, string.len());
+        let end = string.len().saturating_sub(trim_back);
         // extract sketched kv-mers from the given sequence string
         #[cfg(any(target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(string, kmer_vec, c, self.key_size as usize, None, bidirectional);
+                    extract_markers_avx2_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
                 }
             } else {
-                fmh_seeds_masked(string, kmer_vec, c, self.key_size as usize, None, bidirectional);
+                fmh_seeds_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(string, kmer_vec, c, self.key_size as usize, None, bidirectional);
+            fmh_seeds_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
         }
     }
 
@@ -99,6 +101,8 @@ impl KmerSet {
         &mut self,
         seq_file: &str,
         c: usize,
+        trim_front: usize,
+        trim_back: usize,
     ) {
         let reader = parse_fastx_file(&seq_file);
         //println!("Reading file: {}", seq_file);
@@ -113,7 +117,7 @@ impl KmerSet {
                     Ok(record) => {
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, self.bidirectional);
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, self.bidirectional, trim_front, trim_back);
                         self.add_seed_vector(&kmer_vec);
                     }
                     Err(e) => {
@@ -137,6 +141,8 @@ impl KmerSet {
         sample_per_num_read: usize,
         bidirectional: bool,
         print_verbose: bool,
+        trim_front: usize,
+        trim_back: usize,
     ) -> (u32, u32) {
         let reader = parse_fastx_file(&seq_file);
 
@@ -168,7 +174,7 @@ impl KmerSet {
 
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, bidirectional);
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, bidirectional, trim_front, trim_back);
                         let (matched, total) = self.query_seed_vector(&kmer_vec);
                         //matched_kmers.push(matched);
                         //total_kmers.push(total);

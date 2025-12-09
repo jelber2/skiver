@@ -84,15 +84,75 @@ class KVMerReport:
             plt.ylim(0.8, 1.0)
             plt.tight_layout()
             plt.show()
+    
+    def _find_mutation_outlier(self):
+        fields = ["SUBSTITUTION(AC)","SUBSTITUTION(AG)","SUBSTITUTION(AT)","SUBSTITUTION(GA)","SUBSTITUTION(GC)","SUBSTITUTION(GT)","SUBSTITUTION(CA)","SUBSTITUTION(CG)","SUBSTITUTION(CT)","SUBSTITUTION(TA)","SUBSTITUTION(TC)","SUBSTITUTION(TG)","INSERTION(A)","INSERTION(C)","INSERTION(G)","INSERTION(T)","DELETION(A)","DELETION(C)","DELETION(G)","DELETION(T)"]
+
+        outliers = self.report_data_df["total_count"] < 0
+
+        for field in fields:
+            self.report_data_df["ratio"] = self.report_data_df[field] / self.report_data_df["total_count"]
+
+            nonzero_ratios = self.report_data_df.loc[self.report_data_df["ratio"] > 0, "ratio"]
+
+            q1 = nonzero_ratios.quantile(0.25)
+            q3 = nonzero_ratios.quantile(0.75)
+            iqr = q3 - q1
+
+            
+            upper_bound = q3 + 1.5 * iqr
+
+            print(f"Field: {field}, Upper Bound: {upper_bound}")
+
+            num_outliers = ((self.report_data_df["ratio"] > upper_bound)).sum()
+            print(f"Number of outliers in {field}: {num_outliers}")
+
+            outliers = outliers | (self.report_data_df["ratio"] > upper_bound)
+        
+        print(f"Total number of outliers: {outliers.sum()}")
+        
+        return outliers
+    
+    def _find_consensus_outliers(self):
+        v = 1
+        outliers = self.report_data_df["total_count"] < 0
+
+        while f"consensus_count_up_to_v{v}" in self.report_data_df.columns:
+            if v == 1:
+                self.report_data_df["ratio"] = self.report_data_df[f"consensus_count_up_to_v{v}"] / self.report_data_df["total_count"]
+            else:
+                self.report_data_df["ratio"] = self.report_data_df[f"consensus_count_up_to_v{v}"] / self.report_data_df[f"consensus_count_up_to_v{v-1}"]
+            
+            nonone_ratios = self.report_data_df.loc[self.report_data_df["ratio"] < 1, "ratio"]
+            q1 = nonone_ratios.quantile(0.25)
+            q3 = nonone_ratios.quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            print(f"v: {v}, Lower Bound: {lower_bound}")
+            num_outliers = ((self.report_data_df["ratio"] < lower_bound)).sum()
+            print(f"Number of outliers in consensus ratio up to v{v}: {num_outliers}")
+
+            outliers = outliers | (self.report_data_df["ratio"] < lower_bound)
+            v += 1
+
+        print(f"Total number of outliers: {outliers.sum()}")
+        return outliers
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
-    report = KVMerReport("./ERR3152366_trim_ref.csv")
-    #report = KVMerReport("./ERR3152366_ref.csv")
+    #report = KVMerReport("./ERR3152366_trim_ref.csv")
+    report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851_trim_ref.csv")
     #report = KVMerReport("./SRR7415629_ref.csv")
     
-    filt = report.report_data_df["homopolymer_length"] > 0
+    #filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 5)
+    filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 5)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)

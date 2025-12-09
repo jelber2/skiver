@@ -1,7 +1,6 @@
 /target
 log
 *.tsv
-*.ipynb
 test.sh
 *.txt
 *.kvmer

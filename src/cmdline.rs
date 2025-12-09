@@ -36,6 +36,12 @@ pub struct SketchArgs {
     #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
 
+    #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
+    pub trim_front: usize,
+
+    #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
+    pub trim_back: usize,
+
     #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
 }
@@ -64,6 +70,13 @@ pub struct AnalyzeArgs {
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: Option<String>,
 
+    #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
+    pub trim_front: usize,
+
+    #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
+    pub trim_back: usize,
+
+
     #[clap(short, help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
 }
@@ -90,6 +103,13 @@ pub struct MapArgs {
 
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: String,
+
+    #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
+    pub trim_front: usize,
+
+    #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
+    pub trim_back: usize,
+
 
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,
