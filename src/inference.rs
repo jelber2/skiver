@@ -132,7 +132,7 @@ fn sum_mean(x: &Vec<u32>, y: &Vec<u32>) -> (f64, f64) {
     let sum_x: f64 = x.iter().map(|&xi| xi as f64).sum();
     let sum_y: f64 = y.iter().map(|&yi| yi as f64).sum();
 
-    (sum_x / sum_y, 0.)
+    (sum_y / sum_x, 0.)
 }
 
 fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
@@ -144,8 +144,9 @@ fn error_type_rate(stats: &KVmerStats, error: EditOperation) -> (f64, f64) {
         x.push(stats.consensus_counts[i] + stats.neighbor_counts[i] - count);
         y.push(count);
     }
+    println!("Error type {:?}: total consensus = {}, total errors = {}", error, x.iter().sum::<u32>(), y.iter().sum::<u32>());
 
-    linear_regression_no_intercept_heteroskedastic(&x, &y)
+    sum_mean(&x, &y)
 }
 
 
@@ -260,7 +261,7 @@ pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
         for j in 0..4 {
             if i != j {
                 let (k, range) = spectrum.substitution_rate[i][j];
-                println!("  {} -> {}: {:.3} ± {:.3}", i, j, k / v as f64 * 100., range / v as f64 * 100.);
+                println!("  {} -> {}: {:.5} ± {:.3}", i, j, k / v as f64 * 100., range / v as f64 * 100.);
             }
         }
     }
@@ -268,13 +269,13 @@ pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
     println!("Deletion Rate:");
     for i in 0..4 {
         let (k, range) = spectrum.deletion_rate[i];
-        println!("  {}: {:.3} ± {:.3}", i, k / v as f64 * 100., range / v as f64 * 100.);
+        println!("  {}: {:.5} ± {:.3}", i, k / v as f64 * 100., range / v as f64 * 100.);
     }
 
     println!("Insertion Rate:");
     for i in 0..4 {
         let (k, range) = spectrum.insertion_rate[i];
-        println!("  {}: {:.3} ± {:.3}", i, k / v as f64 * 100., range / v as f64 * 100.);
+        println!("  {}: {:.5} ± {:.3}", i, k / v as f64 * 100., range / v as f64 * 100.);
     }
 
     let (k, k_range, b, b_range) = spectrum.total_error_rate;

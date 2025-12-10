@@ -151,6 +151,84 @@ class KVMerReport:
             plt.xlabel('Hazard Ratio')
             plt.ylabel('Frequency')
             plt.show()
+    
+
+    def plot_mutation_spectrum(self, filter=None):
+        substitution_fields = ["SUBSTITUTION(AC)","SUBSTITUTION(AG)","SUBSTITUTION(AT)","SUBSTITUTION(CA)","SUBSTITUTION(CG)","SUBSTITUTION(CT)","SUBSTITUTION(GA)","SUBSTITUTION(GC)","SUBSTITUTION(GT)","SUBSTITUTION(TA)","SUBSTITUTION(TC)","SUBSTITUTION(TG)"]
+        insertion_fields = ["INSERTION(A)","INSERTION(C)","INSERTION(G)","INSERTION(T)"]
+        deletion_fields = ["DELETION(A)","DELETION(C)","DELETION(G)","DELETION(T)"]
+
+        filt = filter if filter is not None else self.report_data_df["total_count"] > 0
+
+        mutation_spectrum = {}
+
+        for field_set, title in zip([substitution_fields, insertion_fields, deletion_fields], ["Substitutions", "Insertions", "Deletions"]):
+            for field in field_set:
+                y_sum = self.report_data_df[filt][field].sum()
+                x_sum = self.report_data_df[filt]["consensus_count"].sum() +  self.report_data_df[filt]["neighbor_count"].sum() - y_sum
+
+                ratio = y_sum / x_sum if x_sum > 0 else 0
+                mutation_spectrum[field] = ratio
+
+                print(f"{field}: {y_sum} / {x_sum} = {ratio:.6f}")
+        
+        # Normalize so that the total sums to 1
+        total = sum(mutation_spectrum.values())
+        for key in mutation_spectrum:
+            mutation_spectrum[key] /= total
+        
+        # Plot mutation spectrum
+        # On the left plot, a heat map with [A, C, G, T, _] on both axes for substitutions, insertions, and deletions, and on the right plot, a bar plot showing the substitution, insertion, and deletion rates.
+        plt.figure(figsize=(14, 6))
+        plt.subplot(1, 2, 1)
+        bases = ['A', 'C', 'G', 'T', '_']
+        matrix = np.zeros((5, 5))
+        for field, ratio in mutation_spectrum.items():
+            if field.startswith("SUBSTITUTION"):
+                from_base = field.split('(')[1][0]
+                to_base = field.split('(')[1][1]
+                i = bases.index(from_base)
+                j = bases.index(to_base)
+                matrix[i, j] = ratio
+            elif field.startswith("INSERTION"):
+                base = field.split('(')[1][0]
+                j = bases.index(base)
+                matrix[4, j] = ratio
+            elif field.startswith("DELETION"):
+                base = field.split('(')[1][0]
+                i = bases.index(base)
+                matrix[i, 4] = ratio
+        sns.heatmap(matrix, xticklabels=bases, yticklabels=bases, annot=True, fmt=".4f", cmap="Blues")
+        plt.title('Error/Mutation Spectrum Heatmap')
+        plt.xlabel('Observed Base')
+        plt.ylabel('Reference Base')
+        plt.subplot(1, 2, 2)
+        mutation_types = ['Substitutions', 'Insertions', 'Deletions']
+        mutation_rates = [sum(mutation_spectrum[field] for field in substitution_fields),
+                          sum(mutation_spectrum[field] for field in insertion_fields),
+                          sum(mutation_spectrum[field] for field in deletion_fields)]
+        sns.barplot(x=mutation_types, y=mutation_rates)
+        plt.title('Overall Error/Mutation Spectrum')
+        plt.ylabel('Proportion')
+        plt.tight_layout()
+        plt.savefig("mutation_spectrum.png", transparent=True)
+        plt.show()  
+        
+    
+
+    def fit_beta_distribution(self, filter=None):
+        data_filter = filter if filter is not None else self.report_data_df["total_count"] > 0
+        v_values, p00_stats = self.calculate_p00_stats(filter=data_filter)
+
+        # fit 1 - alpha / (alpha + beta + v) to p00_stats
+        from scipy.optimize import curve_fit
+        def beta_func(v, alpha, beta):
+            return 1 - alpha / (alpha + beta + v)
+        
+        popt, pcov = curve_fit(beta_func, v_values, p00_stats, bounds=(0, [1000., 1000.]))
+        alpha, beta = popt
+
+
             
 
 
@@ -162,17 +240,18 @@ class KVMerReport:
 
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_trim_ref.csv")
-    #report = KVMerReport("./ERR3152366.csv")
-    #report = KVMerReport("./ERR2935851_trim_ref.csv")
-    #report = KVMerReport("./SRR7415629.csv")
-    report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
+    #report = KVMerReport("./ERR3152366_log.csv")
+    #report = KVMerReport("./ERR2935851.csv")
+    report = KVMerReport("./SRR7415629.csv")
+    #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
+    #report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
 
     #report.plot_consensus_distribution(v=1)
     
-    #filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 5)
-    filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 5)
+    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 5)
+    #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 5)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
@@ -182,6 +261,7 @@ if __name__ == "__main__":
     v_values, p00_stats = report.calculate_p00_stats(filter=filt)
     #p00_regression = report._linear_regression(v_values, p00_stats)
     print("P00 Stats:", p00_stats)
+    report.plot_mutation_spectrum(filter=filt)
     #print("P00 Regression:", p00_regression)
 
     report.analyze_with_plot(filter=filt)
