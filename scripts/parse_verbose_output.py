@@ -127,7 +127,7 @@ class KVMerReport:
             q1 = nonone_ratios.quantile(0.25)
             q3 = nonone_ratios.quantile(0.75)
             iqr = q3 - q1
-            lower_bound = q1 - 1.5 * iqr
+            lower_bound = q1 - 3 * iqr
             print(f"v: {v}, Lower Bound: {lower_bound}")
             num_outliers = ((self.report_data_df["ratio"] < lower_bound)).sum()
             print(f"Number of outliers in consensus ratio up to v{v}: {num_outliers}")
@@ -137,6 +137,21 @@ class KVMerReport:
 
         print(f"Total number of outliers: {outliers.sum()}")
         return outliers
+    
+    def plot_consensus_distribution(self, v):
+        if f"consensus_count_up_to_v{v}" in self.report_data_df.columns:
+            if v == 1:
+                self.report_data_df["ratio"] = self.report_data_df[f"consensus_count_up_to_v{v}"] / self.report_data_df["total_count"]
+            else:
+                self.report_data_df["ratio"] = self.report_data_df[f"consensus_count_up_to_v{v}"] / self.report_data_df[f"consensus_count_up_to_v{v-1}"]
+            
+            plt.figure(figsize=(8, 6))
+            sns.histplot(self.report_data_df[self.report_data_df["ratio"] < 1]["ratio"], bins=50, kde=True)
+            plt.title(f'Hazard ratio at v={v}')
+            plt.xlabel('Hazard Ratio')
+            plt.ylabel('Frequency')
+            plt.show()
+            
 
 
 
@@ -147,9 +162,14 @@ class KVMerReport:
 
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_trim_ref.csv")
-    report = KVMerReport("./ERR3152366.csv")
+    #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851_trim_ref.csv")
-    #report = KVMerReport("./SRR7415629_ref.csv")
+    #report = KVMerReport("./SRR7415629.csv")
+    report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
+    #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
+    #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
+
+    #report.plot_consensus_distribution(v=1)
     
     #filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 5)
     filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 5)
