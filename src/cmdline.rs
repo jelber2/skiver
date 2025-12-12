@@ -42,6 +42,9 @@ pub struct SketchArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
+    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    pub threads: usize,
+
     #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
 }
@@ -61,8 +64,8 @@ pub struct AnalyzeArgs {
     #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
 
-    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Threshold for consensus.")]
-    pub threshold: u32,
+    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
+    pub lower_bound: u32,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
     pub bidirectional: bool,
@@ -76,6 +79,8 @@ pub struct AnalyzeArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
+    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    pub threads: usize,
 
     #[clap(short, help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
@@ -95,8 +100,8 @@ pub struct MapArgs {
     #[clap(short, default_value_t = 100, help_heading = "ALGORITHM", help = "Read sampling rate.")]
     pub sample_rate: usize,
 
-    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Threshold for consensus.")]
-    pub threshold: u32,
+    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
+    pub lower_bound: u32,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
     pub bidirectional: bool,
@@ -110,6 +115,8 @@ pub struct MapArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
+    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    pub threads: usize,
 
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,

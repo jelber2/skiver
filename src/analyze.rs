@@ -9,6 +9,9 @@ use glob::glob;
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+    rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
+
+    info!("Using {} threads for analysis.", args.threads);
 
     let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
     
@@ -38,7 +41,7 @@ pub fn analyze(args: AnalyzeArgs) {
         reference_kvmer_set.add_file_to_kvmer_set(reference, args.c, args.trim_front, args.trim_back);
         info!("Loaded reference file: {}", reference);
 
-        let stats = kvmer_set.get_stats_with_reference(args.threshold, &reference_kvmer_set);
+        let stats = kvmer_set.get_stats_with_reference(args.lower_bound, &reference_kvmer_set);
         if let Some(output_path) = &args.output_path {
             kvmer_set.output_stats(output_path, &stats, true, true);
         }
@@ -49,7 +52,7 @@ pub fn analyze(args: AnalyzeArgs) {
         
     } else {
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
-        let stats = kvmer_set.get_stats(args.threshold);
+        let stats = kvmer_set.get_stats(args.lower_bound);
         if let Some(output_path) = &args.output_path {
             kvmer_set.output_stats(output_path, &stats, true, true);
         }

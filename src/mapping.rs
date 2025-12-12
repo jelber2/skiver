@@ -19,7 +19,7 @@ pub fn map(args: crate::cmdline::MapArgs) {
     let mut total_kmers: u32 = 0;
     info!("Processing query files...");
     for file in &args.files {
-        let (matched, total) = kmer_set.query_file(file, args.c, args.threshold, args.sample_rate, args.bidirectional, args.print_verbose, args.trim_front, args.trim_back);
+        let (matched, total) = kmer_set.query_file(file, args.c, args.lower_bound, args.sample_rate, args.bidirectional, args.print_verbose, args.trim_front, args.trim_back);
 
         total_matched += matched;
         total_kmers += total;

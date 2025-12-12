@@ -18,7 +18,7 @@ class KVMerReport:
             v_values.append(v)
             consensus_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
             error_count = self.report_data_df[data_filter][f"error_count_up_to_v{v}"].sum()
-            lambda_stats.append(error_count / consensus_count if consensus_count > 0 else 0)
+            lambda_stats.append(float(error_count / consensus_count) if consensus_count > 0 else 0)
             v += 1
         return v_values, lambda_stats
     
@@ -34,11 +34,11 @@ class KVMerReport:
             if v == 1:
                 p0_count = self.report_data_df[data_filter][f"total_count"].sum()
                 p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
-                p00_stats.append(p00_count / p0_count if p0_count > 0 else 0)
+                p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
             else:
                 p0_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v-1}"].sum()
                 p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
-                p00_stats.append(p00_count / p0_count if p0_count > 0 else 0)
+                p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
             v += 1
         return v_values, p00_stats
     
@@ -67,11 +67,11 @@ class KVMerReport:
         # P00 regression: compute and plot its fit on subplot 2
         y_p00 = np.array(p00_stats)
         if x.size > 1 and y_p00.size == x.size:
-            lr_p00 = stats.linregress(x, y_p00)
-            y_p00_fit = lr_p00.intercept + lr_p00.slope * x
+            fit = self.fit_beta_distribution(x, y_p00)
+            y_p00_fit = 1 - fit[0] / (fit[0] + fit[1] + x)
             plt.subplot(1, 2, 2)
             plt.plot(x, y_p00_fit, color='red', linestyle='--',
-                 label=f"fit: y={lr_p00.slope:.4f}x+{lr_p00.intercept:.4f}, R²={lr_p00.rvalue**2:.4f}")
+                 label=f"fit: alpha={fit[0]:.2f}, beta={fit[1]:.2f}")
             plt.plot(x, y_p00, marker='o')
             plt.legend()
 
@@ -100,7 +100,7 @@ class KVMerReport:
             iqr = q3 - q1
 
             
-            upper_bound = q3 + 1.5 * iqr
+            upper_bound = q3 + 3 * iqr
 
             print(f"Field: {field}, Upper Bound: {upper_bound}")
 
@@ -127,7 +127,7 @@ class KVMerReport:
             q1 = nonone_ratios.quantile(0.25)
             q3 = nonone_ratios.quantile(0.75)
             iqr = q3 - q1
-            lower_bound = q1 - 3 * iqr
+            lower_bound = q1 - 1.5 * iqr
             print(f"v: {v}, Lower Bound: {lower_bound}")
             num_outliers = ((self.report_data_df["ratio"] < lower_bound)).sum()
             print(f"Number of outliers in consensus ratio up to v{v}: {num_outliers}")
@@ -216,10 +216,7 @@ class KVMerReport:
         
     
 
-    def fit_beta_distribution(self, filter=None):
-        data_filter = filter if filter is not None else self.report_data_df["total_count"] > 0
-        v_values, p00_stats = self.calculate_p00_stats(filter=data_filter)
-
+    def fit_beta_distribution(self, v_values, p00_stats):
         # fit 1 - alpha / (alpha + beta + v) to p00_stats
         from scipy.optimize import curve_fit
         def beta_func(v, alpha, beta):
@@ -227,6 +224,12 @@ class KVMerReport:
         
         popt, pcov = curve_fit(beta_func, v_values, p00_stats, bounds=(0, [1000., 1000.]))
         alpha, beta = popt
+
+        print(f"Fitted beta distribution parameters: alpha={alpha}, beta={beta}")
+        print(f"Mean: {alpha / (alpha + beta)}, Variance: {(alpha * beta) / ((alpha + beta)**2 * (alpha + beta + 1))}")
+
+
+        return popt  # alpha, beta
 
 
             
@@ -240,7 +243,7 @@ class KVMerReport:
 
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_trim_ref.csv")
-    #report = KVMerReport("./ERR3152366_log.csv")
+    #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851.csv")
     report = KVMerReport("./SRR7415629.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
@@ -250,8 +253,8 @@ if __name__ == "__main__":
 
     #report.plot_consensus_distribution(v=1)
     
-    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 5)
-    #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 5)
+    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 20)
+    #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 20)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)

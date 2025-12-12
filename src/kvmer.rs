@@ -1,6 +1,7 @@
 use log::{info, warn, error};
 use needletail::parse_fastx_file;
 use serde::{Serialize, Deserialize};
+use rayon::prelude::*;
 
 use std::fs;
 use std::fs::File;
@@ -165,7 +166,10 @@ impl KVmerSet {
         } else {
             //println!("Reading file: {}", seq_file);
             let mut reader = reader.unwrap();
+
+            /*
             while let Some(record) = reader.next() {
+                
                 match record {
                     Ok(record) => {
                         let seq = record.seq();
@@ -176,6 +180,41 @@ impl KVmerSet {
                     Err(e) => {
                         warn!("Error reading record: {}", e);
                     }
+                }
+            }
+            */
+            let mut chunk: Vec<Vec<u8>> = Vec::with_capacity(NUM_READS_PER_CHUNK);
+            loop {
+                chunk.clear();
+                for _ in 0..NUM_READS_PER_CHUNK {
+                    if let Some(record) = reader.next() {
+                        match record {
+                            Ok(record) => {
+                                // copy the sequence bytes into an owned Vec<u8> so it does not borrow from `record`
+                                chunk.push(record.seq().to_vec());
+                            }
+                            Err(e) => {
+                                warn!("Error reading record: {}", e);
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                if chunk.is_empty() {
+                    break;
+                }
+
+                let kmer_vecs: Vec<Vec<u64>> = chunk.par_iter()
+                    .map(|seq| {
+                        let mut kmer_vec: Vec<u64> = Vec::new();
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, trim_front, trim_back);
+                        kmer_vec
+                    })
+                    .collect();
+
+                for kmer_vec in kmer_vecs {
+                    self.add_seed_vector(&kmer_vec);
                 }
             }
         }
@@ -222,7 +261,7 @@ impl KVmerSet {
      */
     fn _num_neighbors_up_to_v(&self, consensus: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
         // find consensus value up to v
-        /*
+        
         let mut value_map_up_to_v: HashMap<u64, u32> = HashMap::new();
         for (neighbor, count) in value_map {
             let value_up_to_v = neighbor >> ((self.value_size - v) * 2);
@@ -242,9 +281,9 @@ impl KVmerSet {
                 consensus_up_to_v = *value;
             }
         }
-        */
         
-        let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
+        
+        //let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
         let mut num_neighbors: u32 = 0;

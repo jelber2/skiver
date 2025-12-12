@@ -4,10 +4,12 @@ use crate::kvmer::*;
 use simple_logger::SimpleLogger;
 use log::info;
 use crate::cmdline::SketchArgs;
+use rayon::prelude::*;
 
 
 pub fn sketch(args: SketchArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+    rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
     info!("Processing query files...");
     
     let mut kvmer_set = KVmerSet::new(args.k, args.v, false);
