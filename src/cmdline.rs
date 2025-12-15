@@ -55,34 +55,34 @@ pub struct AnalyzeArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
-    #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
+    #[clap(short = 'k', default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short = 'v', default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
+    #[clap(short = 'c', default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
 
-    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
+    #[clap(short = 'l', long = "lower-bound", default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
     pub lower_bound: u32,
 
-    #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
+    #[clap(short = 'd', long = "bidirectional", help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
     pub bidirectional: bool,
 
-    #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
+    #[clap(short = 'r', long = "reference", help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: Option<String>,
 
-    #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
+    #[clap(short = 'f', long = "trim-front", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
     pub trim_front: usize,
 
-    #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
+    #[clap(short = 'b', long = "trim-back", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    #[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     pub threads: usize,
 
-    #[clap(short, help_heading = "OUTPUT", help = "Output file.")]
+    #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
 }
 
@@ -100,7 +100,7 @@ pub struct MapArgs {
     #[clap(short, default_value_t = 100, help_heading = "ALGORITHM", help = "Read sampling rate.")]
     pub sample_rate: usize,
 
-    #[clap(short, default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
+    #[clap(short, default_value_t = 5, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
     pub lower_bound: u32,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]

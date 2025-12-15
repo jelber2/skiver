@@ -1,7 +1,8 @@
 use log::{info, warn, error};
-use needletail::parse_fastx_file;
+use needletail::{Sequence, kmer, parse_fastx_file};
 use serde::{Serialize, Deserialize};
 use rayon::prelude::*;
+use crossbeam_channel::{bounded, Receiver, Sender};
 
 use std::fs;
 use std::fs::File;
@@ -151,6 +152,7 @@ impl KVmerSet {
         }
     }
 
+    
     pub fn add_file_to_kvmer_set(
         &mut self,
         seq_file: &str,
@@ -158,6 +160,7 @@ impl KVmerSet {
         trim_front: usize,
         trim_back: usize,
     ) {
+        /*
         let reader = parse_fastx_file(&seq_file);
         //println!("Reading file: {}", seq_file);
         if !reader.is_ok() {
@@ -167,7 +170,7 @@ impl KVmerSet {
             //println!("Reading file: {}", seq_file);
             let mut reader = reader.unwrap();
 
-            /*
+            
             while let Some(record) = reader.next() {
                 
                 match record {
@@ -182,7 +185,7 @@ impl KVmerSet {
                     }
                 }
             }
-            */
+            
             let mut chunk: Vec<Vec<u8>> = Vec::with_capacity(NUM_READS_PER_CHUNK);
             loop {
                 chunk.clear();
@@ -218,6 +221,58 @@ impl KVmerSet {
                 }
             }
         }
+        */
+        
+        let (sender, receiver): (Sender<Vec<SequenceInfo>>, Receiver<Vec<SequenceInfo>>) = bounded(100);
+        let seq_file_clone = seq_file.to_string();
+        let reader_thread = std::thread::spawn(move || {
+            let reader = parse_fastx_file(&seq_file_clone);
+            let mut batch: Vec<SequenceInfo> = Vec::with_capacity(NUM_READS_PER_CHUNK);
+            if !reader.is_ok() {
+                error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
+                return;
+            }
+            let mut reader = reader.unwrap();
+            while let Some(record) = reader.next() {
+                match record {
+                    Ok(record) => {
+                        // copy the sequence bytes into an owned Vec<u8> so it does not borrow from `record`
+                        let seq_info = SequenceInfo {
+                            seq: record.seq().to_vec(),
+                        };
+                        batch.push(seq_info);
+                        if batch.len() >= NUM_READS_PER_CHUNK {
+                            let to_send = std::mem::replace(&mut batch, Vec::with_capacity(NUM_READS_PER_CHUNK));
+                            if sender.send(to_send).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error reading record: {}", e);
+                    }
+                }
+            }
+            // send any remaining reads after finishing the loop
+            if !batch.is_empty() {
+                let _ = sender.send(batch);
+            }
+        });
+
+        while let Ok(batch) = receiver.recv() {
+            let kmer_vecs: Vec<Vec<u64>> = batch.par_iter()
+                .map(|sequence| {
+                    let mut kmer_vec: Vec<u64> = Vec::new();
+                    self.extract_markers_masked(&sequence.seq, &mut kmer_vec, c, trim_front, trim_back);
+                    kmer_vec
+                })
+                .collect();
+
+            for kmer_vec in kmer_vecs {
+                self.add_seed_vector(&kmer_vec);
+            }
+        }
+        reader_thread.join().unwrap();
     }
 
     pub fn containment_index(&self, other: &KVmerSet) -> (f64, f64) {

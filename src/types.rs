@@ -249,3 +249,9 @@ pub struct KVmerStats {
     pub consensus_up_to_v_counts: Vec<Vec<u32>>,
     pub error_up_to_v_counts: Vec<Vec<u32>>,
 }
+
+
+#[derive(Clone)]
+pub struct SequenceInfo {
+    pub seq: Vec<u8>,
+}
