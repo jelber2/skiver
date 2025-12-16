@@ -83,7 +83,8 @@ class KVMerReport:
             plt.ylabel('P00')
             plt.ylim(0.8, 1.0)
             plt.tight_layout()
-            plt.show()
+            plt.savefig("lambda_p00_analysis.png", transparent=True)
+            #plt.show()
     
     def _find_mutation_outlier(self):
         fields = ["SUBSTITUTION(AC)","SUBSTITUTION(AG)","SUBSTITUTION(AT)","SUBSTITUTION(GA)","SUBSTITUTION(GC)","SUBSTITUTION(GT)","SUBSTITUTION(CA)","SUBSTITUTION(CG)","SUBSTITUTION(CT)","SUBSTITUTION(TA)","SUBSTITUTION(TC)","SUBSTITUTION(TG)","INSERTION(A)","INSERTION(C)","INSERTION(G)","INSERTION(T)","DELETION(A)","DELETION(C)","DELETION(G)","DELETION(T)"]
@@ -212,7 +213,7 @@ class KVMerReport:
         plt.ylabel('Proportion')
         plt.tight_layout()
         plt.savefig("mutation_spectrum.png", transparent=True)
-        plt.show()  
+        #plt.show()  
         
     
 

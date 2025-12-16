@@ -13,3 +13,4 @@ bincode = "1"
 serde = { version = "1", features = ["derive"] }
 rayon = "1.11.0"
 crossbeam-channel = "0.5.15"
+scirs2-optimize = "0.1.0-rc.2"
