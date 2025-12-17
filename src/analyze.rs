@@ -15,6 +15,7 @@ pub fn analyze(args: AnalyzeArgs) {
 
     let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
     
+    // Read query files
     info!("Processing query files...");
     for file in &args.files {
         for entry in glob(file).expect("Failed to read glob pattern") {
@@ -35,32 +36,33 @@ pub fn analyze(args: AnalyzeArgs) {
     }
     info!("Finished processing query files.");
 
+    let analyzer = ErrorAnalyzer::new(args.bidirectional,
+                                                     !args.use_all,
+                                                     args.outlier_threshold,
+                                                    RatioEstimationMethod::SumRatio,
+                                                     args.num_experiments,
+                                                     args.bootstrap_sample_rate);
+
+    
+    let stats: KVmerStats;
     if let Some(reference) = &args.reference {
 
         let mut reference_kvmer_set = KVmerSet::new(args.k, args.v, true);
         reference_kvmer_set.add_file_to_kvmer_set(reference, args.c, args.trim_front, args.trim_back);
         info!("Loaded reference file: {}", reference);
 
-        let stats = kvmer_set.get_stats_with_reference(args.lower_bound, &reference_kvmer_set);
-        if let Some(output_path) = &args.output_path {
-            kvmer_set.output_stats(output_path, &stats, true, true);
-        }
-        //kvmer_set.output_stats(&stats);
-        let spectrum = error_profile(&stats, args.bidirectional);
-        output_error_spectrum(&spectrum, args.v);
-        info!("Analysis complete.");
-        
+        stats = kvmer_set.get_stats_with_reference(args.lower_bound, &reference_kvmer_set);
     } else {
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
-        let stats = kvmer_set.get_stats(args.lower_bound);
-        if let Some(output_path) = &args.output_path {
-            kvmer_set.output_stats(output_path, &stats, true, true);
-        }
-        let spectrum = error_profile(&stats, args.bidirectional);
-        output_error_spectrum(&spectrum, args.v);
-        info!("Analysis complete.");
-       
+        stats = kvmer_set.get_stats(args.lower_bound);
     }
+    let spectrum = analyzer.analyze(&stats);
+
+    // output to stdout a csv file
+    // [TODO] allow output a separate line per file
+    println!("{}", header_str(args.bidirectional));
+    let spectrum_str = spectrum_to_str(&spectrum, args.bidirectional);
+    println!("{}", spectrum_str);
 
     
     

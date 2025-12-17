@@ -1,21 +1,25 @@
+use std::hash::Hash;
 use std::path::Display;
+use std::collections::HashMap;
 
 use crate::types::*;
 use crate::constants::*;
 
 use scirs2_optimize::least_squares::{robust_least_squares, HuberLoss};
 use scirs2_core::ndarray::{array, Array1};
+use log::info;
+use rand::Rng;
 
 
 pub struct ErrorSpectrum {
-    pub substitution_rate: [[(f32, (f32, f32)); 4]; 4],
-    pub insertion_rate: [(f32, (f32, f32)); 4],
-    pub deletion_rate: [(f32, (f32, f32)); 4],
-
     pub estimated_alpha: f32,
     pub estimated_beta: f32,
-    pub error_rate_mean: (f32, (f32, f32)),
-    pub error_rate_std: (f32, (f32, f32)),
+    pub hazard_rate_mean: (f32, (f32, f32)),
+    pub hazard_rate_std: (f32, (f32, f32)),
+
+    pub snp_rate: Vec<(f32, (f32, f32))>,
+
+    pub bidirectional: bool,
 }
 
 
@@ -27,22 +31,31 @@ pub enum RatioEstimationMethod {
 }
 
 pub struct ErrorAnalyzer {
+    pub k: u8,
+
+    pub bidirectional: bool,
+    pub exclude_outliers: bool,
     pub outlier_threshold: f32,
     pub ratio_method: RatioEstimationMethod,
 
     // bootstrap parameters
     pub num_experiments: u32,
-    pub data_per_experiment: u32,
+    pub bootstrap_sample_rate: f32,
 }
 
 
 
 impl ErrorAnalyzer {
-    pub fn new(outlier_threshold: f32, ratio_method: RatioEstimationMethod, num_experiments: u32, data_per_experiment: u32) -> Self {
-        outlier_threshold,
-        ratio_method,
-        num_experiments,
-        data_per_experiment,
+    pub fn new(k: u8, bidirectional: bool, exclude_outliers: bool, outlier_threshold: f32, ratio_method: RatioEstimationMethod, num_experiments: u32, bootstrap_sample_rate: f32) -> Self {
+        Self {
+            k,
+            bidirectional,
+            exclude_outliers,
+            outlier_threshold,
+            ratio_method,
+            num_experiments,
+            bootstrap_sample_rate,
+        }
     }
 
 
@@ -56,16 +69,19 @@ impl ErrorAnalyzer {
      * Perform linear regression with model y = k * x
      * return the slope k
      */
-    fn slope<T>(&self, x: &Vec<T>, y: &Vec<T>, indices: &Vec<u32>) -> f32 {
-        let n = x.len() as f32;
+    fn slope(x: &Vec<u32>, y: &Vec<u32>, indices: &Vec<usize>) -> f32 {
+        let n = indices.len() as f32;
 
         if n <= 1. {
             return 0.;
         }
 
-        let sum_xy = indices.iter().map(|&i| x[i] * y[i]).sum();
-        let sum_x2 = indices.iter().map(|&i| x[i] * x[i]).sum();
-        let k = sum_xy as f32 / sum_x2 as f32;
+        let sum_xy: f32 = indices.iter().map(|&i| x[i] * y[i]).sum() as f32;
+        let sum_x2: f32 = indices.iter().map(|&i| x[i] * x[i]).sum() as f32;
+        if sum_x2 == 0.0 {
+            return 0.;
+        }
+        let k = sum_xy / sum_x2;
 
         k
     }
@@ -74,18 +90,23 @@ impl ErrorAnalyzer {
      * Perform linear regression with model y = k * x + b
      * return the slope k and intercept b
      */
-    fn linear_fit<T>(&self, x: &Vec<T>, y: &Vec<T>, indices: &Vec<u32>) -> (f32, f32) {
-        let n = x.len() as f32;
+    fn linear_fit(x: &Vec<u32>, y: &Vec<u32>, indices: &Vec<usize>) -> (f32, f32) {
+        let n = indices.len() as f32;
 
         if n <= 2. {
             return (0., 0.);
         }
-        let sum_x: f32 = indices.iter().map(|&i| x[i]).sum() as f32;
-        let sum_y: f32 = indices.iter().map(|&i| y[i]).sum() as f32;
-        let sum_xy: f32 = indices.iter().map(|&i| x[i] * y[i]).sum() as f32;
-        let sum_x2: f32 = indices.iter().map(|&i| x[i] * x[i]).sum() as f32;
+        let sum_x: f32 = indices.iter().map(|&i| x[i]).sum::<u32>() as f32;
+        let sum_y: f32 = indices.iter().map(|&i| y[i]).sum::<u32>() as f32;
+        let sum_xy: f32 = indices.iter().map(|&i| x[i] * y[i]).sum::<u32>() as f32;
+        let sum_x2: f32 = indices.iter().map(|&i| x[i] * x[i]).sum::<u32>() as f32;
 
-        let k = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x);
+        let denom = n * sum_x2 - sum_x * sum_x;
+        if denom == 0.0 {
+            return (0., 0.);
+        }
+
+        let k = (n * sum_xy - sum_x * sum_y) / denom;
         let b = (sum_y - k * sum_x) / n;
 
         (k, b)
@@ -94,8 +115,8 @@ impl ErrorAnalyzer {
     /**
      * Calculate the mean of the ratios y/x
      */
-    fn ratio_mean<T>(&self, x: &Vec<T>, y: &Vec<T>, indices: &Vec<u32>) -> f32 {
-        let n: f32 = x.len() as f32;
+    fn ratio_mean(x: &Vec<u32>, y: &Vec<u32>, indices: &Vec<usize>) -> f32 {
+        let n: f32 = indices.len() as f32;
 
         if n <= 1. {
             return 0.;
@@ -105,6 +126,10 @@ impl ErrorAnalyzer {
             .filter_map(|&i| if x[i] != 0 { Some(y[i] as f32 / x[i] as f32) } else { None })
             .collect::<Vec<f32>>();
 
+        if ratio.is_empty() {
+            return 0.;
+        }
+
         let k: f32 = ratio.iter().sum::<f32>() / ratio.len() as f32;
 
         k
@@ -113,44 +138,110 @@ impl ErrorAnalyzer {
     /**
      * Calculate the sum of ratios sum(y) / sum(x)
      */
-    fn sum_ratio<T>(x: &Vec<T>, y: &Vec<T>, indices: &Vec<u32>) -> f32 {
-        let n: f32 = x.len() as f32;
+    fn sum_ratio(x: &Vec<u32>, y: &Vec<u32>, indices: &Vec<usize>) -> f32 {
+        let n: f32 = indices.len() as f32;
 
         if n == 0. {
             return 0.;
         }
 
-        let sum_x: f32 = indices.iter().map(|&i| x[i]).sum() as f32;
-        let sum_y: f32 = indices.iter().map(|&i| y[i]).sum() as f32;
-
+        let sum_x: f32 = indices.iter().map(|&i| x[i]).sum::<u32>() as f32;
+        if sum_x == 0.0 {
+            return 0.;
+        }
+        let sum_y: f32 = indices.iter().map(|&i| y[i]).sum::<u32>() as f32;
         sum_y / sum_x
     }
 
     /**
      * The function that uses different methods to calculate the ratio
      */
-    fn calculate_ratio<T>(&self, x: &Vec<T>, y: &Vec<T>, indices: &Vec<u32>) -> f32 {
+    fn calculate_ratio(&self, x: &Vec<u32>, y: &Vec<u32>, indices: &Vec<usize>) -> f32 {
         match self.ratio_method {
-            RatioEstimationMethod::Slope => self.slope(x, y, indices),
+            RatioEstimationMethod::Slope => Self::slope(x, y, indices),
             RatioEstimationMethod::LinearFit => {
-                let (k, _) = self.linear_fit(x, y, indices);
+                let (k, _) = Self::linear_fit(x, y, indices);
                 k
             },
-            RatioEstimationMethod::RatioMean => self.ratio_mean(x, y, indices),
+            RatioEstimationMethod::RatioMean => Self::ratio_mean(x, y, indices),
             RatioEstimationMethod::SumRatio => Self::sum_ratio(x, y, indices),
         }
     }
+
+    fn sum_indices(&self, x: &Vec<u32>, indices: &Vec<usize>) -> u32 {
+        indices.iter().map(|&i| x[i]).sum()
+    }
+
+    fn random_subsample_with_replacement(x: &Vec<usize>, n: usize) -> Vec<usize> {
+        let mut rng = rand::thread_rng();
+        (0..n)
+            .map(|_| x[rng.gen_range(0..x.len())])
+            .collect()
+    }
+
+    fn random_subsample_without_replacement(x: &Vec<usize>, n: usize) -> Vec<usize> {
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        let mut x_clone = x.clone();
+        x_clone.shuffle(&mut rng);
+        x_clone.truncate(n);
+        x_clone
+    }
+
+
+    /*
+    ========================
+    Util functions for estimating the parameters of beta distribution
+    ========================
+    */
+    fn residual_hazard_ratio_beta_distribution(params: &[f64], data: &[f64]) -> Array1<f64> {
+        let n = data.len() / 2;
+        let x = &data[0..n];
+        let y = &data[n..];
+
+        let mut res = Array1::zeros(n);
+        for i in 0..n {
+            res[i] = y[i] - (1.0 - params[0] / (params[0] + params[1] + x[i]));
+        }
+        res
+    }
+
+    fn fit_hazard_ratio_beta_distribution(&self, hazard_ratios: &Vec<f32>, _sample_size: usize) -> (f32, f32) {
+        let n = hazard_ratios.len();
+        let mut vec_data: Vec<f64> = Vec::with_capacity(n * 2);
+        for i in 1..=n {
+            vec_data.push(i as f64 + self.k as f64);
+        }
+        for &hr in hazard_ratios.iter() {
+            vec_data.push(hr as f64);
+        }
+
+        // convert the Vec<f64> to an Array1<f64> as required by robust_least_squares
+        let data = Array1::from_vec(vec_data);
+
+        let initial_params = array![1.0f64, 1.0f64];
+        let result = robust_least_squares(
+            &Self::residual_hazard_ratio_beta_distribution,
+            &initial_params,
+            HuberLoss::new(1.0),
+            None::<fn(&[f64], &[f64]) -> scirs2_core::ndarray::Array2<f64>>, 
+            &data, None
+        ).expect("robust_least_squares failed");
+
+        (result.x[0] as f32, result.x[1] as f32)
+    }
+
     
 
     /**
      * Identify outliers based on hazard ratios across different v values,
      * return the indices of inliers.
      */
-    pub fn find_hazard_ratio_outliers(stats: &KVmerStats) -> Vec<u32> {
+    pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
 
-        let mut res = [true; stats.consensus_counts.len()].to_vec();
-        let mut x: &Vec<f32>;
-        let mut y: &Vec<f32>;
+        let mut res = vec![true; stats.consensus_counts.len()];
+        let mut x: &Vec<u32>;
+        let mut y: &Vec<u32>;
         // [TODO] Return also the number of outliers for each v
         //let mut num_outliers = [0; stats.consensus_counts.len()];
         
@@ -163,7 +254,7 @@ impl ErrorAnalyzer {
                 y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
             }
             let ratio = x.iter().zip(y.iter())
-                .filter_map(|(&xi, &yi)| if xi != 0 { Some(yi as f32 / xi as f32) } else { 1. })
+                .map(|(&xi, &yi)| if xi != 0 { yi as f32 / xi as f32 } else { 1. })
                 .collect::<Vec<f32>>();
 
             // sort the ratios and exclude the ratios that = 1., and find the IQR
@@ -179,7 +270,6 @@ impl ErrorAnalyzer {
             let q3 = filtered_ratio[(3 * n) / 4];
             let iqr = q3 - q1;
 
-            // [TODO] Change the threshold to be a parameter
             let lower_bound = q1 - self.outlier_threshold * iqr;
             for (i, &r) in ratio.iter().enumerate() {
                 if r < lower_bound {
@@ -189,8 +279,8 @@ impl ErrorAnalyzer {
             }
         }
 
-        let indices = res.iter().enumerate()
-                                .filter_map(|(i, &is_inlier)| if is_inlier { Some(i as u32) } else { None })
+        let indices: Vec<usize> = res.iter().enumerate()
+                                .filter_map(|(i, &is_inlier)| if is_inlier { Some(i) } else { None })
                                 .collect();
         
         info!("Identified {} inliers out of {} data points based on hazard ratios ({}%).", indices.len(), res.len(), (indices.len() as f32 / res.len() as f32) * 100.0);
@@ -199,39 +289,89 @@ impl ErrorAnalyzer {
     }
 
 
-    pub fn estimate_error_rate(&self, stats: &KVmerStats, error_type: EditOperation, indices: &Vec<u32>) -> (f32, (f32, f32)) {
-        let mut x: Vec<u32> = Vec::new();
-        let mut y: Vec<u32> = Vec::new();
+    /**
+     * Estimate the error rate and 5-95% confidence interval using bootstrap
+     * for all the error types
+     */
+    pub fn estimate_error_rate(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<(f32, (f32, f32))> {
+        // initialize the error count arrays
+        let operations: Vec<EditOperation> = if self.bidirectional {
+            ALL_OPERATIONS_CANONICAL.to_vec()
+        } else {
+            ALL_OPERATIONS.to_vec()
+        };
 
-        for (i, error_map) in stats.error_counts.iter().enumerate() {
-            let count = error_map.get(&error_type).cloned().unwrap_or(0);
-            x.push(stats.consensus_counts[i] + stats.neighbor_counts[i] - count);
-            y.push(count);
+        let mut error_counts: HashMap<EditOperation, Vec<u32>> = HashMap::new();
+        for op in operations.iter() {
+            error_counts.insert(*op, Vec::new());
         }
 
-        let k = self.calculate_ratio(&x, &y, indices);
+        for i in 0..stats.error_counts.len() {
+            for op in operations.iter() {
+                let count = stats.error_counts[i].get(op).cloned().unwrap_or(0);
+                error_counts.get_mut(op).unwrap().push(count);
+            }
+        }
+        
+        // calculate the mean for each error type using the full error_counts vector
+        let mut estimates: HashMap<EditOperation, f32> = HashMap::new();
+        for op in operations.iter() {
+            let sum = self.sum_indices(&error_counts[op], indices);
+            estimates.insert(*op, sum as f32 / indices.len() as f32);
+        }
+        let total_counts = estimates.values().sum::<f32>();
+        for op in operations.iter() {
+            let rate = if total_counts > 0.0 {
+                estimates[op] / total_counts
+            } else {
+                0.0
+            };
+            estimates.insert(*op, rate);
+        }
+        
 
         // bootstrap to estimate the 5-95% confidence interval
-        let mut bootstrap_estimates: Vec<f32> = Vec::with_capacity(self.num_experiments as usize);
+        let mut bootstrap_estimates: HashMap<EditOperation, Vec<f32>> = HashMap::new();
+        for op in operations.iter() {
+            bootstrap_estimates.insert(*op, Vec::new());
+        }
+
         for _ in 0..self.num_experiments {
-            let mut indices_sample: Vec<u32> = Vec::with_capacity(self.data_per_experiment as usize);
-            for _ in 0..self.data_per_experiment {
-                let idx = indices[rand::random::<usize>() % indices.len()];
-                indices_sample.push(idx);
+            let indices_sample = Self::random_subsample_with_replacement(indices, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
+            
+            let mut error_count: HashMap<EditOperation, u32> = HashMap::new();
+            for op in operations.iter() {
+                let sum = self.sum_indices(&error_counts[op], &indices_sample);
+                error_count.insert(*op, sum);
             }
-            let k_sample = self.calculate_ratio(&x, &y, &indices_sample);
-            bootstrap_estimates.push(k_sample);
+            // normalize the error counts so that they sum to 1
+            let total_count: u32 = error_count.values().sum();
+            for op in operations.iter() {
+                let rate = if total_count > 0 {
+                    error_count[op] as f32 / total_count as f32
+                } else {
+                    0.0
+                };
+                bootstrap_estimates.get_mut(op).unwrap().push(rate);
+            }
         }
 
         // calculate the 5-95% confidence interval
-        bootstrap_estimates.sort_by(f32::total_cmp);
-        let lower = bootstrap_estimates[(self.num_experiments as f32 * 0.05) as usize];
-        let upper = bootstrap_estimates[(self.num_experiments as f32 * 0.95) as usize];
+        let mut result: Vec<(f32, (f32, f32))> = Vec::new();
+        for op in operations.iter() {
+            let mut estimates_op = bootstrap_estimates[op].clone();
+            estimates_op.sort_by(f32::total_cmp);
+            let n = estimates_op.len();
+            let mean = estimates[op];
+            let lower = estimates_op[(n as f32 * 0.05) as usize];
+            let upper = estimates_op[(n as f32 * 0.95) as usize];
+            result.push((mean, (lower, upper)));
+        }
 
-        (k, (lower, upper))
+        result
     }
 
-    pub fn estimate_hazard_ratio_confidence_interval(&self, stats: &KVmerStats, indices: &Vec<u32>) -> ((f32, f32), (f32, f32)) {
+    pub fn estimate_hazard_ratio_confidence_interval(&self, stats: &KVmerStats, indices: &Vec<usize>) -> ((f32, f32), (f32, f32)) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
 
@@ -239,11 +379,7 @@ impl ErrorAnalyzer {
         let mut beta_list: Vec<f32> = Vec::new();
 
         for _ in 0..self.num_experiments {
-            let mut indices_sample: Vec<u32> = Vec::with_capacity(self.data_per_experiment as usize);
-            for _ in 0..self.data_per_experiment {
-                let idx = indices[rand::random::<usize>() % indices.len()];
-                indices_sample.push(idx);
-            }
+            let indices_sample = Self::random_subsample_with_replacement(indices, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
 
             let mut hazard_ratios: Vec<f32> = Vec::new();
 
@@ -260,12 +396,12 @@ impl ErrorAnalyzer {
                 hazard_ratios.push(h);
             }
             // estimate the parameters of the beta distribution
-            let (alpha, beta) = fit_hazard_ratio_beta_distribution(&hazard_ratios, self.data_per_experiment as usize);
+            let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
             alpha_list.push(alpha);
             beta_list.push(beta);
         }
 
-        let mean = alpha_list.iter().zip(beta_list.iter())
+        let mut mean = alpha_list.iter().zip(beta_list.iter())
             .map(|(&a, &b)| a / (a + b))
             .collect::<Vec<f32>>();
         mean.sort_by(f32::total_cmp);
@@ -284,7 +420,7 @@ impl ErrorAnalyzer {
     }
 
 
-    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<u32>) -> (f32, f32, f32, f32) {
+    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, f32, f32) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
 
@@ -303,155 +439,89 @@ impl ErrorAnalyzer {
             hazard_ratios.push(h);
         }
         // estimate the parameters of the beta distribution
-        (alpha, beta) = fit_hazard_ratio_beta_distribution(&hazard_ratios, indices.len())
-        mean = alpha / (alpha + beta);
-        std = (alpha * beta / (((alpha + beta) * (alpha + beta)) * (alpha + beta + 1.0))).sqrt();
+        let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, indices.len());
+        let mean = alpha / (alpha + beta);
+        let std = (alpha * beta / (((alpha + beta) * (alpha + beta)) * (alpha + beta + 1.0))).sqrt();
 
         (mean, std, alpha, beta)
     }
 
 
+    pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
+        let indices = if self.exclude_outliers {
+            self.find_hazard_ratio_outliers(stats)
+        } else {
+            (0..stats.consensus_counts.len()).collect()
+        };
+
+        let error_rates = self.estimate_error_rate(stats, &indices);
+
+        let (mean, std, alpha, beta) = self.estimate_hazard_ratio(stats, &indices);
+
+        let (mean_ci, std_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
+
+        ErrorSpectrum {
+            estimated_alpha: alpha,
+            estimated_beta: beta,
+            hazard_rate_mean: (mean, mean_ci),
+            hazard_rate_std: (std, std_ci),
+            snp_rate: error_rates,
+            bidirectional: self.bidirectional,
+        }
+    }
+}
 
 
-fn infer_hazard_ratio(stats: &KVmerStats, v: u8) -> f32 {
-    if v - MIN_VALUE_FOR_ERROR_ESTIMATION == 0 {
-        let x = &stats.total_counts;
-        let y = &stats.consensus_up_to_v_counts[0];
+/**
+ * Format the spectrum into a line in a csv file
+ */
+pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String {
+    let mut result = String::new();
 
-        
-        y.iter().sum::<u32>() as f32 / x.iter().sum::<u32>() as f32
-        //let (slope, _) = linear_regression_no_intercept(x, y);
-        //slope
+    if bidirectional != spectrum.bidirectional {
+        panic!("The bidirectional flag does not match the spectrum data.");
+    }
+
+    // hazard ratio, mean and std
+    result.push_str(&format!("{:.6},{:.6}-{:.6},", spectrum.hazard_rate_mean.0, (spectrum.hazard_rate_mean.1).0, (spectrum.hazard_rate_mean.1).1));
+    result.push_str(&format!("{:.6},{:.6}-{:.6},", spectrum.hazard_rate_std.0, (spectrum.hazard_rate_std.1).0, (spectrum.hazard_rate_std.1).1));
+
+    // hazard ratio alpha and beta
+    result.push_str(&format!("{:.6},{:.6},", spectrum.estimated_alpha, spectrum.estimated_beta));
+
+    // SNP rates
+    for (i, (mean, (lower, upper))) in spectrum.snp_rate.iter().enumerate() {
+        result.push_str(&format!("{:.6},{:.6}-{:.6}", mean, lower, upper));
+        if i != spectrum.snp_rate.len() - 1 {
+            result.push(',');
+        }
+    }
+
+    result
+}
+
+
+pub fn header_str(bidirectional: bool) -> String {
+    let mut result = String::new();
+
+    result.push_str("mean,mean_ci,std,std_ci,");
+    result.push_str("alpha,beta,");
+
+    if bidirectional {
+        for (i, op) in ALL_OPERATIONS_CANONICAL.iter().enumerate() {
+            result.push_str(&format!("{},{}_ci", op, op));
+            if i != ALL_OPERATIONS_CANONICAL.len() - 1 {
+                result.push(',');
+            }
+        }
     } else {
-        let x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
-        let y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
-
-        y.iter().sum::<u32>() as f32 / x.iter().sum::<u32>() as f32
-        //let (slope, _) = linear_regression_no_intercept(x, y);
-        //slope
-    }  
-}
-
-fn residual_hazard_ratio_beta_distribution(params: &[f32], data: &[f32]) -> Array1<f32> {
-    let n = data.len() / 2;
-    let x = &data[0..n];
-    let y = &data[n..];
-
-    let mut res = Array1::zeros(n);
-    for i in 0..n {
-        res[i] = y[i] - (1 - params[0] / (params[0] + params[1] + x[i]));
-    }
-    res
-}
-
-fn fit_hazard_ratio_beta_distribution(hazard_ratios: &Vec<f32>, k: usize) -> (f32, f32) {
-    let n = hazard_ratios.len();
-    let mut data: Vec<f32> = Vec::with_capacity(n * 2);
-    for &hr in hazard_ratios.iter() {
-        data.push(hr);
-    }
-    for &hr in hazard_ratios.iter() {
-        data.push(1. - hr);
-    }
-
-    let initial_params = array![1.0, 1.0];
-    let result = robust_least_squares(
-        &residual_hazard_ratio_beta_distribution,
-        &initial_params,
-        HuberLoss::new(1.0),
-        None::<fn(&[f32], &[f32]) -> scirs2_core::ndarray::Array2<f32>>, 
-        &data, None
-    );
-
-    (result.x[0], result.x[1])
-
-}
-
-
-
-fn total_error_rate(stats: &KVmerStats) -> (f32, f32, f32, f32) {
-    let mut x: Vec<f32> = Vec::new();
-    let mut y: Vec<f32> = Vec::new();
-
-    /*
-    for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=stats.v {
-        y.push(infer_p(stats, v as u8));
-        println!("{},", y.last().unwrap());
-        x.push(v as f32);
-    }
-    */
-    for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..=stats.v {
-        y.push(infer_hazard_ratio(stats, v as u8));
-        println!("{},", y.last().unwrap());
-        x.push(v as f32);
-    }
-
-    linear_regression(&x, &y)
-}
-
-
-
-pub fn error_profile(stats: &KVmerStats, bidirectional: bool) -> ErrorSpectrum {
-    
-
-
-    let mut substitution_rate: [[(f32, f32); 4]; 4] = Default::default();
-    for i in 0..4 {
-        for j in 0..4 {
-            if i != j {
-                let op = BASES_TO_SUBSTITUTION[i][j].unwrap();
-                substitution_rate[i][j] = error_type_rate(stats, op);
+        for (i, op) in ALL_OPERATIONS.iter().enumerate() {
+            result.push_str(&format!("{},{}_ci", op, op));
+            if i != ALL_OPERATIONS.len() - 1 {
+                result.push(',');
             }
         }
     }
 
-    let mut deletion_rate: [(f32, f32); 4] = Default::default();
-    for i in 0..4 {
-        let op = BASES_TO_DELETION[i].unwrap();
-        deletion_rate[i] = error_type_rate(stats, op);
-    }
-
-    let mut insertion_rate: [(f32, f32); 4] = Default::default();
-    for i in 0..4 {
-        let op = BASES_TO_INSERTION[i].unwrap();
-        insertion_rate[i] = error_type_rate(stats, op);
-    }
-
-    // find the ambiguous error rates
-    let (ambiguous_k, ambiguous_range) = error_type_rate(stats, EditOperation::AMBIGUOUS);
-
-    ErrorSpectrum {
-        substitution_rate,
-        insertion_rate,
-        deletion_rate,
-        total_error_rate: total_error_rate(stats),
-    }
-}
-
-pub fn output_error_spectrum(spectrum: &ErrorSpectrum, v: u8) {
-    // Output the error spectrum in a human-readable format
-    println!("Substitution Rate:");
-    for i in 0..4 {
-        for j in 0..4 {
-            if i != j {
-                let (k, range) = spectrum.substitution_rate[i][j];
-                println!("  {} -> {}: {:.5} ± {:.3}", i, j, k / v as f32 * 100., range / v as f32 * 100.);
-            }
-        }
-    }
-
-    println!("Deletion Rate:");
-    for i in 0..4 {
-        let (k, range) = spectrum.deletion_rate[i];
-        println!("  {}: {:.5} ± {:.3}", i, k / v as f32 * 100., range / v as f32 * 100.);
-    }
-
-    println!("Insertion Rate:");
-    for i in 0..4 {
-        let (k, range) = spectrum.insertion_rate[i];
-        println!("  {}: {:.5} ± {:.3}", i, k / v as f32 * 100., range / v as f32 * 100.);
-    }
-
-    let (k, k_range, b, b_range) = spectrum.total_error_rate;
-    println!("Slope: {:.6}, Intercept: {:.6}", k, b);
+    result
 }
