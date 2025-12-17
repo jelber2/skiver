@@ -84,10 +84,12 @@ class KVMerReport:
             plt.ylim(0.8, 1.0)
             plt.tight_layout()
             plt.savefig("lambda_p00_analysis.png", transparent=True)
-            #plt.show()
+            plt.show()
     
     def _find_mutation_outlier(self):
-        fields = ["SUBSTITUTION(AC)","SUBSTITUTION(AG)","SUBSTITUTION(AT)","SUBSTITUTION(GA)","SUBSTITUTION(GC)","SUBSTITUTION(GT)","SUBSTITUTION(CA)","SUBSTITUTION(CG)","SUBSTITUTION(CT)","SUBSTITUTION(TA)","SUBSTITUTION(TC)","SUBSTITUTION(TG)","INSERTION(A)","INSERTION(C)","INSERTION(G)","INSERTION(T)","DELETION(A)","DELETION(C)","DELETION(G)","DELETION(T)"]
+        fields = ["AC","AG","AT","GA","GC","GT","CA","CG","CT","TA","TC","TG",
+                  "_A","_C","_G","_T",
+                  "A_","C_","G_","T_"]
 
         outliers = self.report_data_df["total_count"] < 0
 
@@ -155,9 +157,9 @@ class KVMerReport:
     
 
     def plot_mutation_spectrum(self, filter=None):
-        substitution_fields = ["SUBSTITUTION(AC)","SUBSTITUTION(AG)","SUBSTITUTION(AT)","SUBSTITUTION(CA)","SUBSTITUTION(CG)","SUBSTITUTION(CT)","SUBSTITUTION(GA)","SUBSTITUTION(GC)","SUBSTITUTION(GT)","SUBSTITUTION(TA)","SUBSTITUTION(TC)","SUBSTITUTION(TG)"]
-        insertion_fields = ["INSERTION(A)","INSERTION(C)","INSERTION(G)","INSERTION(T)"]
-        deletion_fields = ["DELETION(A)","DELETION(C)","DELETION(G)","DELETION(T)"]
+        substitution_fields = ["AC","AG","AT","GA","GC","GT","CA","CG","CT","TA","TC","TG"]
+        insertion_fields = ["_A","_C","_G","_T"]
+        deletion_fields = ["A_","C_","G_","T_"]
 
         filt = filter if filter is not None else self.report_data_df["total_count"] > 0
 
@@ -185,20 +187,12 @@ class KVMerReport:
         bases = ['A', 'C', 'G', 'T', '_']
         matrix = np.zeros((5, 5))
         for field, ratio in mutation_spectrum.items():
-            if field.startswith("SUBSTITUTION"):
-                from_base = field.split('(')[1][0]
-                to_base = field.split('(')[1][1]
-                i = bases.index(from_base)
-                j = bases.index(to_base)
-                matrix[i, j] = ratio
-            elif field.startswith("INSERTION"):
-                base = field.split('(')[1][0]
-                j = bases.index(base)
-                matrix[4, j] = ratio
-            elif field.startswith("DELETION"):
-                base = field.split('(')[1][0]
-                i = bases.index(base)
-                matrix[i, 4] = ratio
+            from_base = field[0]
+            to_base = field[1]
+            i = bases.index(from_base)
+            j = bases.index(to_base)
+            matrix[i, j] = ratio
+            
         sns.heatmap(matrix, xticklabels=bases, yticklabels=bases, annot=True, fmt=".4f", cmap="Blues")
         plt.title('Error/Mutation Spectrum Heatmap')
         plt.xlabel('Observed Base')
@@ -213,7 +207,7 @@ class KVMerReport:
         plt.ylabel('Proportion')
         plt.tight_layout()
         plt.savefig("mutation_spectrum.png", transparent=True)
-        #plt.show()  
+        plt.show()  
         
     
 
@@ -246,7 +240,8 @@ if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_trim_ref.csv")
     #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851.csv")
-    report = KVMerReport("./SRR7415629.csv")
+    #report = KVMerReport("./SRR7415629.csv")
+    report = KVMerReport("./test_90.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
@@ -254,7 +249,7 @@ if __name__ == "__main__":
 
     #report.plot_consensus_distribution(v=1)
     
-    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 20)
+    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 2)
     #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 20)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)

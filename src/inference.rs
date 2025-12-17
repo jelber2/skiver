@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::types::*;
 use crate::constants::*;
 
-use scirs2_optimize::least_squares::{robust_least_squares, HuberLoss};
+use scirs2_optimize::least_squares::{least_squares, Method};
 use scirs2_core::ndarray::{array, Array1};
 use log::info;
 use rand::Rng;
@@ -76,8 +76,8 @@ impl ErrorAnalyzer {
             return 0.;
         }
 
-        let sum_xy: f32 = indices.iter().map(|&i| x[i] * y[i]).sum() as f32;
-        let sum_x2: f32 = indices.iter().map(|&i| x[i] * x[i]).sum() as f32;
+        let sum_xy: f32 = indices.iter().map(|&i| x[i] * y[i]).sum::<u32>() as f32;
+        let sum_x2: f32 = indices.iter().map(|&i| x[i] * x[i]).sum::<u32>() as f32;
         if sum_x2 == 0.0 {
             return 0.;
         }
@@ -201,7 +201,7 @@ impl ErrorAnalyzer {
 
         let mut res = Array1::zeros(n);
         for i in 0..n {
-            res[i] = y[i] - (1.0 - params[0] / (params[0] + params[1] + x[i]));
+            res[i] = y[i] - (params[0] / (params[0] + params[1] + x[i]));
         }
         res
     }
@@ -220,13 +220,15 @@ impl ErrorAnalyzer {
         let data = Array1::from_vec(vec_data);
 
         let initial_params = array![1.0f64, 1.0f64];
-        let result = robust_least_squares(
+        let result = least_squares(
             &Self::residual_hazard_ratio_beta_distribution,
             &initial_params,
-            HuberLoss::new(1.0),
+            Method::LevenbergMarquardt,
             None::<fn(&[f64], &[f64]) -> scirs2_core::ndarray::Array2<f64>>, 
             &data, None
         ).expect("robust_least_squares failed");
+
+        println!("data: {:?}", data);
 
         (result.x[0] as f32, result.x[1] as f32)
     }
@@ -393,7 +395,7 @@ impl ErrorAnalyzer {
                 }
 
                 let h = self.calculate_ratio(x, y, &indices_sample);
-                hazard_ratios.push(h);
+                hazard_ratios.push(1. - h);
             }
             // estimate the parameters of the beta distribution
             let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
@@ -436,7 +438,10 @@ impl ErrorAnalyzer {
             }
 
             let h = self.calculate_ratio(x, y, indices);
-            hazard_ratios.push(h);
+            hazard_ratios.push(1. - h);
+        }
+        for &h in hazard_ratios.iter() {
+            println!("{},", h);
         }
         // estimate the parameters of the beta distribution
         let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, indices.len());

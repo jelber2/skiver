@@ -1,5 +1,6 @@
 use crate::kvmer::*;
 use crate::utils::*;
+use crate::types::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
@@ -36,12 +37,13 @@ pub fn analyze(args: AnalyzeArgs) {
     }
     info!("Finished processing query files.");
 
-    let analyzer = ErrorAnalyzer::new(args.bidirectional,
-                                                     !args.use_all,
-                                                     args.outlier_threshold,
-                                                    RatioEstimationMethod::SumRatio,
-                                                     args.num_experiments,
-                                                     args.bootstrap_sample_rate);
+    let analyzer = ErrorAnalyzer::new(args.k,
+                                      args.bidirectional,
+                                      !args.use_all,
+                                      args.outlier_threshold,
+                                      RatioEstimationMethod::SumRatio,
+                                      args.num_experiments,
+                                      args.bootstrap_sample_rate);
 
     
     let stats: KVmerStats;
@@ -55,6 +57,9 @@ pub fn analyze(args: AnalyzeArgs) {
     } else {
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
         stats = kvmer_set.get_stats(args.lower_bound);
+    }
+    if let Some(output_path) = &args.output_path {
+        kvmer_set.output_stats(output_path, &stats, true, true);
     }
     let spectrum = analyzer.analyze(&stats);
 
