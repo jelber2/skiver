@@ -46,13 +46,24 @@ pub struct ErrorAnalyzer {
 
 
 impl ErrorAnalyzer {
-    pub fn new(k: u8, bidirectional: bool, exclude_outliers: bool, outlier_threshold: f32, ratio_method: RatioEstimationMethod, num_experiments: u32, bootstrap_sample_rate: f32) -> Self {
+    pub fn new(k: u8, bidirectional: bool, exclude_outliers: bool, outlier_threshold: f32, ratio_method: String, num_experiments: u32, bootstrap_sample_rate: f32) -> Self {
+        let method = match ratio_method.as_str() {
+            "slope" => RatioEstimationMethod::Slope,
+            "linear_fit" => RatioEstimationMethod::LinearFit,
+            "ratio_mean" => RatioEstimationMethod::RatioMean,
+            "sum_ratio" => RatioEstimationMethod::SumRatio,
+            _ => {
+                panic!("Unknown ratio estimation method: {}. Supported methods are: slope, linear_fit, ratio_mean, sum_ratio.", ratio_method);
+            }
+        };
+
+
         Self {
             k,
             bidirectional,
             exclude_outliers,
             outlier_threshold,
-            ratio_method,
+            ratio_method: method,
             num_experiments,
             bootstrap_sample_rate,
         }
@@ -150,6 +161,7 @@ impl ErrorAnalyzer {
             return 0.;
         }
         let sum_y: f32 = indices.iter().map(|&i| y[i]).sum::<u32>() as f32;
+        println!("sum_y: {}, sum_x: {}", sum_y, sum_x);
         sum_y / sum_x
     }
 
@@ -228,7 +240,7 @@ impl ErrorAnalyzer {
             &data, None
         ).expect("robust_least_squares failed");
 
-        println!("data: {:?}", data);
+        //println!("data: {:?}", data);
 
         (result.x[0] as f32, result.x[1] as f32)
     }

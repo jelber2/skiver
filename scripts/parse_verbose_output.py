@@ -35,10 +35,12 @@ class KVMerReport:
                 p0_count = self.report_data_df[data_filter][f"total_count"].sum()
                 p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
                 p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
+                print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
             else:
                 p0_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v-1}"].sum()
                 p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
                 p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
+                print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
             v += 1
         return v_values, p00_stats
     

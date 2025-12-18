@@ -41,7 +41,7 @@ pub fn analyze(args: AnalyzeArgs) {
                                       args.bidirectional,
                                       !args.use_all,
                                       args.outlier_threshold,
-                                      RatioEstimationMethod::SumRatio,
+                                      args.estimation_method.clone(),
                                       args.num_experiments,
                                       args.bootstrap_sample_rate);
 

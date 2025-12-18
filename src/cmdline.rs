@@ -96,6 +96,9 @@ pub struct AnalyzeArgs {
 
     #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
+
+    #[clap(long = "estimation_method", default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
+    pub estimation_method: String,
 }
 
 #[derive(Args, Default)]
