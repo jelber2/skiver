@@ -4,6 +4,8 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+BETA = 30
+
 class KVMerReport:
     def __init__(self, report_data_df):
         self.report_data_df = pd.read_csv(report_data_df)
@@ -52,6 +54,7 @@ class KVMerReport:
         
         plt.subplot(1, 2, 1)
         x = np.array(v_values)
+        k = len(self.report_data_df["key"].iloc[0])
 
         # Lambda regression and plot its fit on subplot 1
         y_lambda = np.array(lambda_stats)
@@ -69,12 +72,12 @@ class KVMerReport:
         # P00 regression: compute and plot its fit on subplot 2
         y_p00 = np.array(p00_stats)
         if x.size > 1 and y_p00.size == x.size:
-            fit = self.fit_beta_distribution(x, y_p00)
-            y_p00_fit = 1 - fit[0] / (fit[0] + fit[1] + x)
+            fit = self.fit_beta_distribution(x + k, y_p00)
+            y_p00_fit = 1 - fit[0] / (fit[0] + BETA + x + k)
             plt.subplot(1, 2, 2)
-            plt.plot(x, y_p00_fit, color='red', linestyle='--',
-                 label=f"fit: alpha={fit[0]:.2f}, beta={fit[1]:.2f}")
-            plt.plot(x, y_p00, marker='o')
+            plt.plot(x + k, y_p00_fit, color='red', linestyle='--',
+                 label=f"fit: alpha={fit[0]:.2f}, beta={BETA:.2f}")
+            plt.plot(x + k, y_p00, marker='o')
             plt.legend()
 
         
@@ -217,13 +220,13 @@ class KVMerReport:
         # fit 1 - alpha / (alpha + beta + v) to p00_stats
         from scipy.optimize import curve_fit
         def beta_func(v, alpha, beta):
-            return 1 - alpha / (alpha + beta + v)
+            return 1 - alpha / (alpha + BETA + v)
         
         popt, pcov = curve_fit(beta_func, v_values, p00_stats, bounds=(0, [1000., 1000.]))
         alpha, beta = popt
 
-        print(f"Fitted beta distribution parameters: alpha={alpha}, beta={beta}")
-        print(f"Mean: {alpha / (alpha + beta)}, Variance: {(alpha * beta) / ((alpha + beta)**2 * (alpha + beta + 1))}")
+        print(f"Fitted beta distribution parameters: alpha={alpha}, beta={BETA}")
+        print(f"Mean: {alpha / (alpha + BETA)}, Variance: {(alpha * BETA) / ((alpha + BETA)**2 * (alpha + BETA + 1))}")
 
 
         return popt  # alpha, beta
