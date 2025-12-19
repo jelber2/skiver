@@ -4,7 +4,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-BETA = 30
+BETA = 5
 
 class KVMerReport:
     def __init__(self, report_data_df):

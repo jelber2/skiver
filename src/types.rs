@@ -202,7 +202,7 @@ pub const BASES_TO_DELETION_CANONICAL: [Option<EditOperation>; 4] = [
     Some(EditOperation::T_),
 ];
 
-pub const ALL_OPERATIONS: [EditOperation; 21] = [
+pub const ALL_OPERATIONS: [EditOperation; 20] = [
     EditOperation::AC,
     EditOperation::AG,
     EditOperation::AT,
@@ -228,12 +228,10 @@ pub const ALL_OPERATIONS: [EditOperation; 21] = [
     EditOperation::C_,
     EditOperation::G_,
     EditOperation::T_,
-
-    EditOperation::AMBIGUOUS,
 ];
 
 
-pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 11] = [
+pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 10] = [
     EditOperation::CA,
     EditOperation::CG,
     EditOperation::CT,
@@ -246,8 +244,6 @@ pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 11] = [
 
     EditOperation::G_,
     EditOperation::T_,
-
-    EditOperation::AMBIGUOUS,
 ];
 
 /**

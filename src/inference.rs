@@ -161,7 +161,7 @@ impl ErrorAnalyzer {
             return 0.;
         }
         let sum_y: f32 = indices.iter().map(|&i| y[i]).sum::<u32>() as f32;
-        println!("sum_y: {}, sum_x: {}", sum_y, sum_x);
+        //println!("sum_y: {}, sum_x: {}", sum_y, sum_x);
         sum_y / sum_x
     }
 
@@ -351,7 +351,7 @@ impl ErrorAnalyzer {
         }
 
         for _ in 0..self.num_experiments {
-            let indices_sample = Self::random_subsample_with_replacement(indices, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
+            let indices_sample = Self::random_subsample_with_replacement(indices, indices.len() as usize);
             
             let mut error_count: HashMap<EditOperation, u32> = HashMap::new();
             for op in operations.iter() {
@@ -393,7 +393,7 @@ impl ErrorAnalyzer {
         let mut beta_list: Vec<f32> = Vec::new();
 
         for _ in 0..self.num_experiments {
-            let indices_sample = Self::random_subsample_with_replacement(indices, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
+            let indices_sample = Self::random_subsample_with_replacement(indices, indices.len() as usize);
 
             let mut hazard_ratios: Vec<f32> = Vec::new();
 
