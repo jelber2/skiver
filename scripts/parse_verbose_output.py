@@ -4,7 +4,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-BETA = 5
+ALPHA_BETA_SUM_CONSTRAINT = 20
 
 class KVMerReport:
     def __init__(self, report_data_df):
@@ -73,6 +73,8 @@ class KVMerReport:
         y_p00 = np.array(p00_stats)
         if x.size > 1 and y_p00.size == x.size:
             fit = self.fit_beta_distribution(x + k, y_p00)
+            if fit[0] + fit[1] < ALPHA_BETA_SUM_CONSTRAINT:
+                fit = self.fit_beta_distribution_constrain(x + k, y_p00, alpha_beta_sum=ALPHA_BETA_SUM_CONSTRAINT)
             y_p00_fit = 1 - fit[0] / (fit[0] + fit[1] + x + k)
             plt.subplot(1, 2, 2)
             plt.plot(x + k, y_p00_fit, color='red', linestyle='--',
@@ -260,7 +262,21 @@ class KVMerReport:
 
 
         return popt  # alpha, beta
+    
+    def fit_beta_distribution_constrain(self, v_values, p00_stats, alpha_beta_sum=10):
+        # fit 1 - alpha / (alpha + beta_fixed + v) to p00_stats
+        from scipy.optimize import curve_fit
+        def beta_func(v, alpha):
+            return 1 - alpha / (alpha_beta_sum + v)
+        
+        popt, pcov = curve_fit(beta_func, v_values, p00_stats, bounds=(0, [1000.]))
+        alpha = popt[0]
 
+        print(f"Fitted beta distribution parameters with beta fixed at {alpha_beta_sum - alpha}: alpha={alpha}")
+        print(f"Mean: {alpha / (alpha + (alpha_beta_sum - alpha))}, Variance: {(alpha * (alpha_beta_sum - alpha)) / ((alpha + (alpha_beta_sum - alpha))**2 * (alpha + (alpha_beta_sum - alpha) + 1))}")
+
+
+        return alpha, alpha_beta_sum - alpha  # alpha, beta
 
             
 
@@ -275,7 +291,8 @@ if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_ref.csv")
     #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851.csv")
-    report = KVMerReport("./SRR7415629.csv")
+    #report = KVMerReport("./SRR7415629.csv")
+    report = KVMerReport("./HG002.csv")
     #report = KVMerReport("./test_90.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
@@ -285,8 +302,8 @@ if __name__ == "__main__":
     #report.plot_consensus_distribution(v=1)
     
     #filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 2)
-    filt = (report.report_data_df["consensus_count"] >= 7)
-    #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 2)
+    #filt = (report.report_data_df["consensus_count"] >= 10)
+    filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 2)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
