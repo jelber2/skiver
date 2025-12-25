@@ -4,7 +4,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-BETA = 5
+
 
 class KVMerReport:
     def __init__(self, report_data_df):
@@ -30,6 +30,8 @@ class KVMerReport:
         v_values = []
         v = 1
         data_filter = filter if filter is not None else self.report_data_df["total_count"] > 0
+
+        print(f"{len(self.report_data_df[data_filter])} entries after filtering.")
 
         while f"consensus_count_up_to_v{v}" in self.report_data_df.columns:
             v_values.append(v)
@@ -73,10 +75,10 @@ class KVMerReport:
         y_p00 = np.array(p00_stats)
         if x.size > 1 and y_p00.size == x.size:
             fit = self.fit_beta_distribution(x + k, y_p00)
-            y_p00_fit = 1 - fit[0] / (fit[0] + BETA + x + k)
+            y_p00_fit = 1 - fit[0] / (fit[0] + fit[1] + x + k)
             plt.subplot(1, 2, 2)
             plt.plot(x + k, y_p00_fit, color='red', linestyle='--',
-                 label=f"fit: alpha={fit[0]:.2f}, beta={BETA:.2f}")
+                 label=f"fit: alpha={fit[0]:.2f}, beta={fit[1]:.2f}")
             plt.plot(x + k, y_p00, marker='o')
             plt.legend()
 
@@ -220,24 +222,27 @@ class KVMerReport:
         # fit 1 - alpha / (alpha + beta + v) to p00_stats
         from scipy.optimize import curve_fit
         def beta_func(v, alpha, beta):
-            return 1 - alpha / (alpha + BETA + v)
+            return 1 - alpha / (alpha + beta + v)
         
         popt, pcov = curve_fit(beta_func, v_values, p00_stats, bounds=(0, [1000., 1000.]))
         alpha, beta = popt
 
-        print(f"Fitted beta distribution parameters: alpha={alpha}, beta={BETA}")
-        print(f"Mean: {alpha / (alpha + BETA)}, Variance: {(alpha * BETA) / ((alpha + BETA)**2 * (alpha + BETA + 1))}")
+        print(f"Fitted beta distribution parameters: alpha={alpha}, beta={beta}")
+        print(f"Mean: {alpha / (alpha + beta)}, Variance: {(alpha * beta) / ((alpha + beta)**2 * (alpha + beta + 1))}")
 
 
         return popt  # alpha, beta
+    
 
+    def plot_coverage_distribution(self):
+        print("Median coverage:", self.report_data_df["total_count"].median())
 
-            
-
-
-
-
-
+        plt.figure(figsize=(8, 6))
+        sns.histplot(self.report_data_df["total_count"], bins=50, kde=True)
+        plt.title('Coverage Distribution')
+        plt.xlabel('Total Count (Coverage)')
+        plt.ylabel('Frequency')
+        plt.show()
 
 
 
@@ -253,8 +258,9 @@ if __name__ == "__main__":
     #report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
 
     #report.plot_consensus_distribution(v=1)
+    report.plot_coverage_distribution()
     
-    filt = (report.report_data_df["homopolymer_length"] > 0) & (report.report_data_df["consensus_count"] >= 2)
+    filt = (report.report_data_df["homopolymer_length"] >= 0) & (report.report_data_df["total_count"] > 7)
     #filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 20)
     #filt = report.report_data_df["total_count"] > 5
     v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)

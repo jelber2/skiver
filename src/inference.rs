@@ -218,6 +218,18 @@ impl ErrorAnalyzer {
         res
     }
 
+    fn residual_hazard_ratio_beta_distribution_fixed_kappa(params: &[f64], data: &[f64]) -> Array1<f64> {
+        let n = data.len() / 2;
+        let x = &data[0..n];
+        let y = &data[n..];
+
+        let mut res = Array1::zeros(n);
+        for i in 0..n {
+            res[i] = y[i] - (params[0] / (MIN_KAPPA as f64 + x[i]));
+        }
+        res
+    }
+
     fn fit_hazard_ratio_beta_distribution(&self, hazard_ratios: &Vec<f32>, _sample_size: usize) -> (f32, f32) {
         let n = hazard_ratios.len();
         let mut vec_data: Vec<f64> = Vec::with_capacity(n * 2);
@@ -239,6 +251,22 @@ impl ErrorAnalyzer {
             None::<fn(&[f64], &[f64]) -> scirs2_core::ndarray::Array2<f64>>, 
             &data, None
         ).expect("robust_least_squares failed");
+
+        if result.x[1] <= MIN_KAPPA as f64 {
+            // refit with fixed kappa
+            let initial_params_fixed = array![1.0f64];
+            //warn!("Estimated beta parameter is too small ({}), probably due to high error rate and low coverage. Refitting with fixed alpha + beta = {}.", result.x[1], MIN_KAPPA);
+            //warn!("Consider increasing the coverage or using bidirectional kmers to improve the estimation.");
+            let result_fixed = least_squares(
+                &Self::residual_hazard_ratio_beta_distribution_fixed_kappa,
+                &initial_params_fixed,
+                Method::LevenbergMarquardt,
+                None::<fn(&[f64], &[f64]) -> scirs2_core::ndarray::Array2<f64>>, 
+                &data, None
+            ).expect("robust_least_squares failed");
+
+            return (result_fixed.x[0] as f32, MIN_KAPPA - result_fixed.x[0] as f32);
+        }
 
         //println!("data: {:?}", data);
 
@@ -300,6 +328,20 @@ impl ErrorAnalyzer {
         info!("Identified {} inliers out of {} data points based on hazard ratios ({}%).", indices.len(), res.len(), (indices.len() as f32 / res.len() as f32) * 100.0);
 
         indices
+    }
+
+    pub fn median_coverage(&self, stats: &KVmerStats, indices: &Vec<usize>) -> f32 {
+        let mut coverages: Vec<u32> = indices.iter().map(|&i| stats.total_counts[i]).collect();
+        coverages.sort_unstable();
+        let n = coverages.len();
+        if n == 0 {
+            return 0.;
+        }
+        if n % 2 == 1 {
+            coverages[n / 2] as f32
+        } else {
+            (coverages[n / 2 - 1] + coverages[n / 2]) as f32 / 2.0
+        }
     }
 
 
@@ -449,6 +491,11 @@ impl ErrorAnalyzer {
                 y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
             }
 
+            println!("v={}, x_sum={}, y_sum={}", v, 
+                    x.iter().sum::<u32>(), // self.sum_indices(x, indices), 
+                    y.iter().sum::<u32>(), //self.sum_indices(y, indices));
+            );
+
             let h = self.calculate_ratio(x, y, indices);
             hazard_ratios.push(1. - h);
         }
@@ -465,6 +512,7 @@ impl ErrorAnalyzer {
 
 
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
+        // exclude the hazard ratio outliers
         let indices = if self.exclude_outliers {
             self.find_hazard_ratio_outliers(stats)
         } else {
