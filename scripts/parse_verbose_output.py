@@ -26,7 +26,7 @@ class KVMerReport:
         return v_values, lambda_stats
     
 
-    def calculate_p00_stats(self, filter=None):
+    def calculate_p00_stats(self, even_weighted=False, filter=None):
         p00_stats = []
         v_values = []
         v = 1
@@ -37,15 +37,23 @@ class KVMerReport:
         while f"consensus_count_up_to_v{v}" in self.report_data_df.columns:
             v_values.append(v)
             if v == 1:
-                p0_count = self.report_data_df[data_filter][f"total_count"].sum()
-                p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
-                p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
-                print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
+                p0_count = self.report_data_df[data_filter][f"total_count"]
+                p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"]
+                #p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
+                #print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
             else:
-                p0_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v-1}"].sum()
-                p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"].sum()
-                p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
-                print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
+                p0_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v-1}"]
+                p00_count = self.report_data_df[data_filter][f"consensus_count_up_to_v{v}"]
+                #p00_stats.append(float(p00_count / p0_count) if p0_count > 0 else 0)
+                #print(f"v={v}, p0_count={p0_count}, p00_count={p00_count}")
+            if even_weighted:
+                ratios = p00_count / p0_count.replace(0, np.nan)
+                mean_ratio = ratios.mean()
+                p00_stats.append(float(mean_ratio) if not np.isnan(mean_ratio) else 0)
+            else:
+                total_p0 = p0_count.sum()
+                total_p00 = p00_count.sum()
+                p00_stats.append(float(total_p00 / total_p0) if total_p0 > 0 else 0)
             v += 1
         return v_values, p00_stats
     
@@ -75,10 +83,19 @@ class KVMerReport:
         # P00 regression: compute and plot its fit on subplot 2
         y_p00 = np.array(p00_stats)
         if x.size > 1 and y_p00.size == x.size:
+            """
+            # Fit with beta distribution
             fit = self.fit_beta_distribution(x + k, y_p00)
             if fit[0] + fit[1] < ALPHA_BETA_SUM_CONSTRAINT:
                 fit = self.fit_beta_distribution_constrain(x + k, y_p00, alpha_beta_sum=ALPHA_BETA_SUM_CONSTRAINT)
             y_p00_fit = 1 - fit[0] / (fit[0] + fit[1] + x + k)
+            """
+
+            # Fit with Weibull distribution
+            fit = self.fit_weibull_distribution(x + k, y_p00)
+            y_p00_fit = 1 - fit[0] * ((x + k) ** fit[1])
+
+           
             plt.subplot(1, 2, 2)
             plt.plot(x + k, y_p00_fit, color='red', linestyle='--',
                  label=f"fit: alpha={fit[0]:.2f}, beta={fit[1]:.2f}")
@@ -91,7 +108,7 @@ class KVMerReport:
             plt.title('P00 vs. v')
             plt.xlabel('v')
             plt.ylabel('P00')
-            plt.ylim(0.8, 1.0)
+            #plt.ylim(0.8, 1.0)
             plt.tight_layout()
             plt.savefig("lambda_p00_analysis.png", transparent=True)
             plt.show()
@@ -113,7 +130,7 @@ class KVMerReport:
             iqr = q3 - q1
 
             
-            upper_bound = q3 + 3 * iqr
+            upper_bound = q3 + 1.5 * iqr
 
             print(f"Field: {field}, Upper Bound: {upper_bound}")
 
@@ -265,13 +282,27 @@ class KVMerReport:
 
 
         return popt  # alpha, beta
+    
+    def fit_weibull_distribution(self, v_values, p00_stats):
+        from scipy.optimize import curve_fit
+        def weibull_func(v, a, b):
+            return 1 - a * (v ** b)
+
+        exclude_indices = 2
+        
+        popt, pcov = curve_fit(weibull_func, v_values[exclude_indices:], p00_stats[exclude_indices:], bounds=([0., -np.inf], [1., 0.]))
+        a, b = popt
+        print(f"Fitted Weibull distribution parameters: {a}, {b}")
+
+        return popt  # c, scale
 
 
     def plot_coverage_distribution(self):
-        print("Median coverage:", self.report_data_df["total_count"].median())
+        print("Median coverage:", self.report_data_df[self.report_data_df["total_count"] < 200]["total_count"].median())
+        print("95th percentile coverage:", self.report_data_df[self.report_data_df["total_count"] < 200]["total_count"].quantile(0.95))
 
         plt.figure(figsize=(8, 6))
-        sns.histplot(self.report_data_df["total_count"], bins=50, kde=True)
+        sns.histplot(self.report_data_df[self.report_data_df["total_count"] < 200]["total_count"], bins=50, kde=True)
         plt.title('Coverage Distribution')
         plt.xlabel('Total Count (Coverage)')
         plt.ylabel('Frequency')
@@ -291,16 +322,54 @@ class KVMerReport:
 
 
         return alpha, alpha_beta_sum - alpha  # alpha, beta
+    
+
+    def estimation_with_different_coverage(self, filter=None):
+        coverage_range = (min(self.report_data_df["total_count"]), max(self.report_data_df["total_count"]))
+        coverage_sort = sorted(self.report_data_df["total_count"].unique())
+        if len(coverage_sort) > 500:
+            coverage_sort = coverage_sort[:500]
+        mean_res = []
+        variance_res = []
+
+        for coverage in coverage_sort:
+            if filter is not None:
+                combined_filter = filter & (self.report_data_df["total_count"] >= coverage)
+            else:
+                combined_filter = self.report_data_df["total_count"] >= coverage
+            v_values, p00_stats = self.calculate_p00_stats(even_weighted=False, filter=combined_filter)
+            fit = self.fit_beta_distribution(v_values, p00_stats)
+
+            if fit[1] < ALPHA_BETA_SUM_CONSTRAINT:
+                fit = self.fit_beta_distribution_constrain(v_values, p00_stats, alpha_beta_sum=ALPHA_BETA_SUM_CONSTRAINT)
+
+            mean_res.append(fit[0] / (fit[0] + fit[1]))
+            variance_res.append(np.sqrt((fit[0] * fit[1]) / ((fit[0] + fit[1])**2 * (fit[0] + fit[1] + 1))))
+
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+        plt.plot(coverage_sort, mean_res)
+        plt.title('Mean vs. Minimum Coverage')
+        plt.xlabel('Minimum Coverage')
+        plt.ylabel('Mean')
+
+        plt.subplot(1, 2, 2)
+        plt.plot(coverage_sort, variance_res)
+        plt.title('Variance vs. Minimum Coverage')
+        plt.xlabel('Minimum Coverage')
+        plt.ylabel('Variance')
+        plt.tight_layout()
+        plt.show()
 
 
 
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_ref.csv")
-    #report = KVMerReport("./ERR3152366.csv")
+    #report = KVMerReport("./ERR3152366_ref.csv")
     #report = KVMerReport("./ERR2935851.csv")
     #report = KVMerReport("./SRR7415629.csv")
-    report = KVMerReport("./HG002.csv")
-    #report = KVMerReport("./test_90.csv")
+    #report = KVMerReport("./HG002.csv")
+    report = KVMerReport("./test_90.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
@@ -308,17 +377,19 @@ if __name__ == "__main__":
 
     #report.plot_consensus_distribution(v=1)
     report.plot_coverage_distribution()
+    #filt = ~report._find_consensus_outliers()
+    #report.estimation_with_different_coverage(filter=filt)
 
-    filt = ~report._find_consensus_outliers() & (report.report_data_df["consensus_count"] >= 2)
+    filt = (report.report_data_df["total_count"] >= 11)
     #filt = report.report_data_df["total_count"] > 5
-    v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
+    #v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
-    print("Lambda Stats:", lambda_stats)
+    #print("Lambda Stats:", lambda_stats)
     #print("Lambda Regression:", lambda_regression)
 
-    v_values, p00_stats = report.calculate_p00_stats(filter=filt)
+    #v_values, p00_stats = report.calculate_p00_stats(filter=filt)
     #p00_regression = report._linear_regression(v_values, p00_stats)
-    print("P00 Stats:", p00_stats)
+    #print("P00 Stats:", p00_stats)
     report.plot_mutation_spectrum(filter=filt)
     #print("P00 Regression:", p00_regression)
 

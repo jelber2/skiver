@@ -64,7 +64,7 @@ pub struct AnalyzeArgs {
     #[clap(short = 'c', default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
     pub c: usize,
 
-    #[clap(short = 'l', long = "lower-bound", default_value_t = 2, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
+    #[clap(short = 'l', long = "lower-bound", default_value_t = 5, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
     pub lower_bound: u32,
 
     #[clap(long = "bidirectional", help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads. Default: use only the forward strand (false).")]

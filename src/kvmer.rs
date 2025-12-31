@@ -338,7 +338,7 @@ impl KVmerSet {
         }
         
         
-        //let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
+        let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);
         let mut num_neighbors: u32 = 0;

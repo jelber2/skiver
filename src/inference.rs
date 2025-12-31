@@ -123,6 +123,28 @@ impl ErrorAnalyzer {
         (k, b)
     }
 
+    fn linear_fit_f32(x: &Vec<f32>, y: &Vec<f32>) -> (f32, f32) {
+        let n = x.len() as f32;
+
+        if n <= 2. {
+            return (0., 0.);
+        }
+        let sum_x: f32 = x.iter().sum::<f32>();
+        let sum_y: f32 = y.iter().sum::<f32>();
+        let sum_xy: f32 = x.iter().zip(y.iter()).map(|(&xi, &yi)| xi * yi).sum::<f32>();
+        let sum_x2: f32 = x.iter().map(|&xi| xi * xi).sum::<f32>();
+
+        let denom = n * sum_x2 - sum_x * sum_x;
+        if denom == 0.0 {
+            return (0., 0.);
+        }
+
+        let k = (n * sum_xy - sum_x * sum_y) / denom;
+        let b = (sum_y - k * sum_x) / n;
+
+        (k, b)
+    }
+
     /**
      * Calculate the mean of the ratios y/x
      */
@@ -271,6 +293,22 @@ impl ErrorAnalyzer {
         //println!("data: {:?}", data);
 
         (result.x[0] as f32, result.x[1] as f32)
+    }
+
+
+    fn fit_hazard_ratio_weibull_distribution(&self, hazard_ratios: &Vec<f32>, _sample_size: usize) -> (f32, f32) {
+        // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
+        let x = hazard_ratios.iter().enumerate().
+            map(|(i, _)| (i as f32 + self.k as f32).ln())
+            .collect::<Vec<f32>>();
+        let y = hazard_ratios.iter()
+            .map(|&hr| if hr > 0.0 { hr.ln() } else { 0.0 })
+            .collect::<Vec<f32>>();
+        let (b, log_a) = Self::linear_fit_f32(&x, &y);
+        
+        let a = log_a.exp();
+
+        (a, b)
     }
 
     
@@ -506,6 +544,10 @@ impl ErrorAnalyzer {
         let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, indices.len());
         let mean = alpha / (alpha + beta);
         let std = (alpha * beta / (((alpha + beta) * (alpha + beta)) * (alpha + beta + 1.0))).sqrt();
+
+        // [TEMP] also estimate the parameters of the Weibull distribution
+        let (a, b) = self.fit_hazard_ratio_weibull_distribution(&hazard_ratios, indices.len());
+        println!("Weibull parameters: alpha = {}, beta = {}", a, b);
 
         (mean, std, alpha, beta)
     }
