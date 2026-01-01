@@ -336,6 +336,10 @@ impl KVmerSet {
                 consensus_up_to_v = *value;
             }
         }
+
+        if consensus_up_to_v != (consensus >> ((self.value_size - v) * 2)) {
+            println!("{} != {}, Consensus: {}", self.to_value_string(consensus_up_to_v), self.to_value_string(consensus >> ((self.value_size - v) * 2)), self.to_value_string(consensus));
+        }
         
         
         let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);

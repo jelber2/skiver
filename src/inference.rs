@@ -6,6 +6,7 @@ use crate::types::*;
 use crate::constants::*;
 
 use scirs2_optimize::least_squares::{least_squares, Method};
+use scirs2_stats::regression::{linear_regression, ridge_regression, lasso_regression};
 use scirs2_core::ndarray::{array, Array1};
 use log::info;
 use rand::Rng;
@@ -305,6 +306,7 @@ impl ErrorAnalyzer {
             .map(|&hr| if hr > 0.0 { hr.ln() } else { 0.0 })
             .collect::<Vec<f32>>();
         let (b, log_a) = Self::linear_fit_f32(&x, &y);
+        
         
         let a = log_a.exp();
 

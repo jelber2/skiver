@@ -284,17 +284,25 @@ class KVMerReport:
         return popt  # alpha, beta
     
     def fit_weibull_distribution(self, v_values, p00_stats):
-        from scipy.optimize import curve_fit
-        def weibull_func(v, a, b):
-            return 1 - a * (v ** b)
 
-        exclude_indices = 2
-        
-        popt, pcov = curve_fit(weibull_func, v_values[exclude_indices:], p00_stats[exclude_indices:], bounds=([0., -np.inf], [1., 0.]))
-        a, b = popt
-        print(f"Fitted Weibull distribution parameters: {a}, {b}")
+        # fit 1 - a * (v ** b) to p00_stats
+        # Or, fit a linear regression to ln(1 - p00_stats) vs. ln(v)
 
-        return popt  # c, scale
+        y = np.array([np.log(1 - p) if p < 1 else -np.inf for p in p00_stats])
+        x = np.log(np.array(v_values))
+
+        # Use ridge regression to fit the line
+        from sklearn.linear_model import Ridge
+
+        model = Ridge(alpha=1.0)
+        x_reshaped = x.reshape(-1, 1)
+        model.fit(x_reshaped, y)
+        b = model.coef_[0]
+        a = model.intercept_
+
+        print(f"Fitted Weibull distribution parameters: a={np.exp(a)}, b={b}")
+        return np.exp(a), b  # a, b
+
 
 
     def plot_coverage_distribution(self):
@@ -380,7 +388,8 @@ if __name__ == "__main__":
     #filt = ~report._find_consensus_outliers()
     #report.estimation_with_different_coverage(filter=filt)
 
-    filt = (report.report_data_df["total_count"] >= 11)
+    #filt = (report.report_data_df["total_count"] >= 11)
+    filt = (report.report_data_df["total_count"] >= 5) # & (report.report_data_df["homopolymer_length"] == 2)
     #filt = report.report_data_df["total_count"] > 5
     #v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
