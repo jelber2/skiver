@@ -314,34 +314,7 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_neighbors_up_to_v(&self, consensus: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {
-        // find consensus value up to v
-        
-        let mut value_map_up_to_v: HashMap<u64, u32> = HashMap::new();
-        for (neighbor, count) in value_map {
-            let value_up_to_v = neighbor >> ((self.value_size - v) * 2);
-            value_map_up_to_v.entry(value_up_to_v)
-                .and_modify(|c| *c += *count)
-                .or_insert(*count);
-        }
-
-        
-        let mut consensus_up_to_v: u64 = 0;
-         
-        let mut max_count = 0;
-        
-        for (value, count) in &value_map_up_to_v {
-            if *count > max_count {
-                max_count = *count;
-                consensus_up_to_v = *value;
-            }
-        }
-
-        if consensus_up_to_v != (consensus >> ((self.value_size - v) * 2)) {
-            println!("{} != {}, Consensus: {}", self.to_value_string(consensus_up_to_v), self.to_value_string(consensus >> ((self.value_size - v) * 2)), self.to_value_string(consensus));
-        }
-        
-        
+    fn _num_neighbors_up_to_v(&self, consensus: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> (u32, u32) {        
         let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let neighbors = _get_neighbors(consensus_up_to_v, v, bidirectional);

@@ -373,15 +373,15 @@ class KVMerReport:
 
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_ref.csv")
-    #report = KVMerReport("./ERR3152366_ref.csv")
+    #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR2935851.csv")
     #report = KVMerReport("./SRR7415629.csv")
     #report = KVMerReport("./HG002.csv")
-    report = KVMerReport("./test_90.csv")
+    #report = KVMerReport("./test_90.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
-    #report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
+    report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
 
     #report.plot_consensus_distribution(v=1)
     report.plot_coverage_distribution()
@@ -389,7 +389,7 @@ if __name__ == "__main__":
     #report.estimation_with_different_coverage(filter=filt)
 
     #filt = (report.report_data_df["total_count"] >= 11)
-    filt = (report.report_data_df["total_count"] >= 5) # & (report.report_data_df["homopolymer_length"] == 2)
+    filt = (report.report_data_df["total_count"] >= 10) # & (report.report_data_df["homopolymer_length"] == 2)
     #filt = report.report_data_df["total_count"] > 5
     #v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)
