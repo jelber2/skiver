@@ -212,6 +212,31 @@ class KVMerReport:
             plt.ylabel('Frequency')
             plt.show()
     
+    def find_consensus_outlier_at_k_1(self):
+        # For each k-mer, calculate the ratio of self.report_data_df[f"consensus_count_up_to_v{v}"] / self.report_data_df[f"consensus_count_up_to_v{v-1}"] at v = 1, 2, ..., k
+        # Find the k-mers where the ratio is particularly low at v = k - 1
+        for kmer in self.report_data_df["key"]:
+            ratios = []
+            v = 1
+            while f"consensus_count_up_to_v{v}" in self.report_data_df.columns:
+                if v == 1:
+                    ratio = self.report_data_df.loc[self.report_data_df["key"] == kmer, f"consensus_count_up_to_v{v}"].values[0] / self.report_data_df.loc[self.report_data_df["key"] == kmer, "total_count"].values[0]
+                else:
+                    ratio = self.report_data_df.loc[self.report_data_df["key"] == kmer, f"consensus_count_up_to_v{v}"].values[0] / self.report_data_df.loc[self.report_data_df["key"] == kmer, f"consensus_count_up_to_v{v-1}"].values[0]
+                ratios.append(ratio)
+                v += 1
+            
+            # find the outliers at v = k - 1
+            if len(ratios) >= 2:
+                v_k_1_ratio = ratios[-2]
+                nonone_ratios = ratios
+                
+
+                if v_k_1_ratio < np.mean(nonone_ratios) - 2 * np.std(nonone_ratios) and self.report_data_df.loc[self.report_data_df["key"] == kmer, "total_count"].values[0] > 20:
+                    print(f"Outlier k-mer at v=k-1: {kmer}, ratio: {v_k_1_ratio}, mean of others: {np.mean(nonone_ratios)}, std of others: {np.std(nonone_ratios)}")
+
+
+    
 
     def plot_mutation_spectrum(self, filter=None):
         substitution_fields = ["AC","AG","AT","GA","GC","GT","CA","CG","CT","TA","TC","TG"]
@@ -372,18 +397,19 @@ class KVMerReport:
 
 
 if __name__ == "__main__":
-    #report = KVMerReport("./ERR3152366_ref.csv")
+    #report = KVMerReport("./ERR3152366.csv")
     #report = KVMerReport("./ERR3152366_ref.csv")
     #report = KVMerReport("./ERR2935851.csv")
     #report = KVMerReport("./SRR7415629.csv")
     #report = KVMerReport("./HG002.csv")
-    report = KVMerReport("./test_90.csv")
+    report = KVMerReport("./test_96_homogeneous.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
     #report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
 
     #report.plot_consensus_distribution(v=1)
+    report.find_consensus_outlier_at_k_1()
     report.plot_coverage_distribution()
     #filt = ~report._find_consensus_outliers()
     #report.estimation_with_different_coverage(filter=filt)
