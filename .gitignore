@@ -6,4 +6,5 @@ test.sh
 *.kvmer
 *.csv
 *.log
+*.out
 *.png

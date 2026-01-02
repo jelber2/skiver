@@ -355,6 +355,12 @@ impl KVmerSet {
         let mut neighbor_counts: Vec<u32> = Vec::new();
 
         for (key, value_map) in &self.key_value_map {
+            
+            println!("Key: {}", self.to_key_string(*key));
+            for (value, count) in value_map {
+                println!("  Reference value: {}, count: {}", self.to_value_string(*value), count);
+            }
+
             let mut max_count = 0;
             let mut sum_count = 0;
             let mut max_value: u64 = 0;
