@@ -80,80 +80,91 @@ fn _position_min<T: Ord>(slice: &[T]) -> Option<usize> {
 
 pub fn fmh_seeds_masked(
     string: &[u8],
-    kmer_vec: &mut Vec<u64>,
+    keys_vec: &mut Vec<u64>,
+    values_vec: &mut Vec<u64>,
     c: usize,
     k: usize,
-    mask: Option<u64>,
+    v: usize,
     bidirectional: bool,
 ) {
     type MarkerBits = u64;
-    if string.len() < k {
+    if string.len() < k + v {
         return;
     }
 
-    let marker_k = k;
-    let mut rolling_kmer_f_marker: MarkerBits = 0;
-    let mut rolling_kmer_r_marker: MarkerBits = 0;
+    let mut rolling_key_f: MarkerBits = 0;
+    let mut rolling_key_r: MarkerBits = 0;
+    let mut rolling_value_f: MarkerBits = 0;
+    let mut rolling_value_r: MarkerBits = 0;
 
-    let marker_reverse_shift_dist = 2 * (marker_k - 1);
-    let marker_mask = MarkerBits::MAX >> (std::mem::size_of::<MarkerBits>() * 8 - 2 * marker_k);
-    let marker_rev_mask = !(3 << (2 * marker_k - 2));
+
+    let key_mask = (1u64 << (2 * k)) - 1;
+    let value_mask = (1u64 << (2 * v)) - 1;
+
     let len = string.len();
-    //    let threshold = i64::MIN + (u64::MAX / (c as u64)) as i64;
-    //    let threshold_marker = i64::MIN + (u64::MAX / sketch_params.marker_c as u64) as i64;
 
     let threshold_marker = u64::MAX / (c as u64);
-    for i in 0..marker_k - 1 {
+
+    // Initialize keys
+    for i in 0..k - 1 {
         let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        //        let nuc_f = KmerEnc::encode(string[i]
         let nuc_r = 3 - nuc_f;
-        rolling_kmer_f_marker <<= 2;
-        rolling_kmer_f_marker |= nuc_f;
+        rolling_key_f <<= 2;
+        rolling_key_f |= nuc_f;
         //        rolling_kmer_r = KmerEnc::rc(rolling_kmer_f, k);
         if bidirectional {
-            rolling_kmer_r_marker >>= 2;
-            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+            rolling_key_r >>= 2;
+            rolling_key_r |= nuc_r << (2 * (k - 1));
         }
     }
-    for i in marker_k-1..len {
-        let nuc_byte = string[i] as usize;
-        let nuc_f = BYTE_TO_SEQ[nuc_byte] as u64;
+
+    // Initialize values
+    for i in k..k + v - 1 {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
         let nuc_r = 3 - nuc_f;
-        rolling_kmer_f_marker <<= 2;
-        rolling_kmer_f_marker |= nuc_f;
-        rolling_kmer_f_marker &= marker_mask;
-        
-        //        rolling_kmer_r &= max_mask;
-        //        KmerEnc::print_string(rolling_kmer_f, k);
-        //        KmerEnc::print_string(rolling_kmer_r, k);
-        //
+        rolling_value_f <<= 2;
+        rolling_value_f |= nuc_f;
 
-        /*
-        let canonical_marker = rolling_kmer_f_marker < rolling_kmer_r_marker;
-        let canonical_kmer_marker = if canonical_marker {
-            rolling_kmer_f_marker
-        } else {
-            rolling_kmer_r_marker
-        };
-        let hash_marker = mm_hash64(canonical_kmer_marker);
-
-        if hash_marker < threshold_marker {
-            kmer_vec.push(hash_marker as u64);
+        if bidirectional {
+            rolling_value_r >>= 2;
+            rolling_value_r |= nuc_r << (2 * (v - 1));
         }
-        */
+    }
 
-        let hash_f = mm_hash64_masked(rolling_kmer_f_marker, mask);
+    // Iterate through the string
+    for i in k - 1..len - v {
+        let nuc_key_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+        let nuc_key_r = 3 - nuc_key_f;
+
+        let nuc_value_f = BYTE_TO_SEQ[string[i + v] as usize] as u64;
+        let nuc_value_r = 3 - nuc_value_f;
+
+        rolling_key_f <<= 2;
+        rolling_key_f |= nuc_key_f;
+        rolling_key_f &= key_mask;
+
+        rolling_value_f <<= 2;
+        rolling_value_f |= nuc_value_f;
+        rolling_value_f &= value_mask;
+
+        let hash_f = mm_hash64_masked(rolling_key_f, None);
         if hash_f < threshold_marker {
-            kmer_vec.push(rolling_kmer_f_marker as u64);
+            keys_vec.push(rolling_key_f as u64);
+            values_vec.push(rolling_value_f as u64);
         }
         if bidirectional {
-            rolling_kmer_r_marker >>= 2;
-            rolling_kmer_r_marker &= marker_rev_mask;
-            rolling_kmer_r_marker |= nuc_r << marker_reverse_shift_dist;
+            rolling_key_r >>= 2;
+            rolling_key_r &= key_mask;
+            rolling_key_r |= (nuc_value_r << (2 * (k - 1)));
 
-            let hash_r = mm_hash64_masked(rolling_kmer_r_marker, mask);
+            rolling_value_r >>= 2;
+            rolling_value_r &= value_mask;
+            rolling_value_r |= (nuc_key_r << (2 * (v - 1)));
+
+            let hash_r = mm_hash64_masked(rolling_key_r, None);
             if hash_r < threshold_marker {
-                kmer_vec.push(rolling_kmer_r_marker as u64);
+                keys_vec.push(rolling_key_r as u64);
+                values_vec.push(rolling_value_r as u64);
             }
         }
     }

@@ -116,170 +116,194 @@ pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
  * The k-mers are extracted from both the forward and reverse strands.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn extract_markers_avx2_masked(string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, k: usize, mask: Option<i64>, bidirectional: bool) { unsafe {
-    if string.len() <= k {
+pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
+    let t = k + v;
+
+    if string.len() < t {
         return;
     }
 
     // divide the string into 4 parts for parallel processing
-    let len = (string.len() - k + 1) / 4;
-    let string1 = &string[0..len + k - 1];
-    let string2 = &string[len..2 * len + k - 1];
-    let string3 = &string[2 * len..3 * len + k - 1];
-    let string4 = &string[3 * len..4 * len + k - 1];
+    let len = (string.len() - t + 1) / 4;
+    if len <= 0 {
+        return;
+    }
+    let string1 = &string[0..len + t - 1];
+    let string2 = &string[len..2 * len + t - 1];
+    let string3 = &string[2 * len..3 * len + t - 1];
+    let string4 = &string[3 * len..4 * len + t - 1];
 
-    /*
-    let use_40 = if 2 * (k - 1) == 40 {
-        true
-    } else if 2 * (k - 1) == 60 {
-        false
-    } else {
-        panic!()
-    };
-    */
+    // storing keys and values
+    let mut rolling_key_f = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_value_f = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_key_r = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_value_r = _mm256_set_epi64x(0, 0, 0, 0);
 
-    //const TWO_K_MINUS_2_40: i32 = 40;
-    //const TWO_K_MINUS_2_60: i32 = 60;
-
-    let mut rolling_kmer_f_marker = _mm256_set_epi64x(0, 0, 0, 0);
-    let mut rolling_kmer_r_marker = _mm256_set_epi64x(0, 0, 0, 0);
     let rev_sub = _mm256_set_epi64x(3, 3, 3, 3);
 
-    // Initialize
+    // Initialize keys
     for i in 0..k - 1 {
         let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
         let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
         let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
         let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+        // f_nucs = [nuc_f1, nuc_f2, nuc_f3, nuc_f4]
         let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
+        // r_nucs = [3 - nuc_f1, 3 - nuc_f2, 3 - nuc_f3, 3 - nuc_f4]
         let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
-
-        rolling_kmer_f_marker = _mm256_slli_epi64(rolling_kmer_f_marker, 2);
-        rolling_kmer_f_marker = _mm256_or_si256(rolling_kmer_f_marker, f_nucs);
+        // rolling_key_f = (rolling_key_f << 2)
+        rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
+        // rolling_key_f = rolling_key_f | f_nucs
+        rolling_key_f = _mm256_or_si256(rolling_key_f, f_nucs);
         if bidirectional {
-            rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
-
-            /*
-            let shift_nuc_r;
-            if use_40 {
-                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
-            } else {
-                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
-            }
-            */
+            // rolling_key_r = (rolling_key_r >> 2)
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            // shift_nuc_r = r_nucs << (2*(k-1))
             let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
-            rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
+            // rolling_key_r = rolling_key_r | shift_nuc_r
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
         }
     }
 
-    let marker_mask = (Kmer::MAX >> (std::mem::size_of::<Kmer>() * 8 - 2 * k)) as i64;
-    let rev_marker_mask: i64 = !(0 | (3 << 2 * k - 2));
-    //    let rev_marker_mask = i64::from_le_bytes(rev_marker_mask.to_le_bytes());
-    //    dbg!(u64::MAX / (c as u64));
-    //    dbg!((u64::MAX / (c as u64)) as i64);
-    let threshold_marker = u64::MAX / c as u64;
-
-    let mm256_marker_mask = _mm256_set_epi64x(marker_mask, marker_mask, marker_mask, marker_mask);
-    let mm256_rev_marker_mask = _mm256_set_epi64x(
-        rev_marker_mask,
-        rev_marker_mask,
-        rev_marker_mask,
-        rev_marker_mask,
-    );
-
-    // iterate over the string
-    for i in k - 1..(len + k - 1) {
+    // Initialize values
+    for i in k..k + v - 1 {
         let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
         let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
         let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
         let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+
+
+        // f_nucs = [nuc_f1, nuc_f2, nuc_f3, nuc_f4]
         let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
-        let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
+        // value_f = (value_f << 2)
+        rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
+        // value_f = value_f | f_nucs
+        rolling_value_f = _mm256_or_si256(rolling_value_f, f_nucs);
+        if bidirectional {
+            // r_nucs = [3 - nuc_f1, 3 - nuc_f2, 3 - nuc_f3, 3 - nuc_f4]
+            let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
+            // rolling_value_r = (rolling_value_r >> 2)
+            rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
+            // shift_nuc_r = r_nucs << (2*(v-1))
+            let shift_nuc_r = _shift_mm256_by_k(r_nucs, v);
+            // rolling_value_r = rolling_value_r | shift_nuc_r
+            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_nuc_r);
+        }
+    }
+
+    let key_mask = ((1u64 << (2 * k)) - 1) as i64;
+    let value_mask = ((1u64 << (2 * v)) - 1) as i64;
+    let threshold_marker = u64::MAX / c as u64;
+
+    let mm256_key_mask = _mm256_set_epi64x(key_mask, key_mask, key_mask, key_mask);
+    let mm256_value_mask = _mm256_set_epi64x(value_mask, value_mask, value_mask, value_mask);
+
+    // iterate over the string
+    for i in k - 1..(len + k - 1) {
+        let nuc_key_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
+        let nuc_key_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
+        let nuc_key_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
+        let nuc_key_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+
+        let nuc_value_f1 = BYTE_TO_SEQ[string1[i + v] as usize] as i64;
+        let nuc_value_f2 = BYTE_TO_SEQ[string2[i + v] as usize] as i64;
+        let nuc_value_f3 = BYTE_TO_SEQ[string3[i + v] as usize] as i64;
+        let nuc_value_f4 = BYTE_TO_SEQ[string4[i + v] as usize] as i64;
+
+        let f_key_nucs = _mm256_set_epi64x(nuc_key_f4, nuc_key_f3, nuc_key_f2, nuc_key_f1);
+        let r_key_nucs = _mm256_sub_epi64(rev_sub, f_key_nucs);
+
+        let f_value_nucs = _mm256_set_epi64x(nuc_value_f4, nuc_value_f3, nuc_value_f2, nuc_value_f1);
+        let r_value_nucs = _mm256_sub_epi64(rev_sub, f_value_nucs);
 
         // f_marker = ((f_marker << 2) | f_nuc) & marker_mask
-        rolling_kmer_f_marker = _mm256_slli_epi64(rolling_kmer_f_marker, 2);
-        rolling_kmer_f_marker = _mm256_or_si256(rolling_kmer_f_marker, f_nucs);
-        rolling_kmer_f_marker = _mm256_and_si256(rolling_kmer_f_marker, mm256_marker_mask);
+        rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
+        rolling_key_f = _mm256_or_si256(rolling_key_f, f_key_nucs);
+        rolling_key_f = _mm256_and_si256(rolling_key_f, mm256_key_mask);
+
+        rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
+        rolling_value_f = _mm256_or_si256(rolling_value_f, f_value_nucs);
+        rolling_value_f = _mm256_and_si256(rolling_value_f, mm256_value_mask);
 
         if bidirectional {
             // r_marker = ((r_marker >> 2) | (r_nuc << (2*(k-1)))) & rev_marker_mask
-            rolling_kmer_r_marker = _mm256_srli_epi64(rolling_kmer_r_marker, 2);
-            /*
-            let shift_nuc_r;
-            if use_40 {
-                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_40);
-            } else {
-                shift_nuc_r = _mm256_slli_epi64(r_nucs, TWO_K_MINUS_2_60);
-            }
-            */
-            let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
-            rolling_kmer_r_marker = _mm256_and_si256(rolling_kmer_r_marker, mm256_rev_marker_mask);
-            rolling_kmer_r_marker = _mm256_or_si256(rolling_kmer_r_marker, shift_nuc_r);
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            let shift_nuc_r = _shift_mm256_by_k(r_key_nucs, k);
+            rolling_key_r = _mm256_and_si256(rolling_key_r, mm256_key_mask);
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
+
+            rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
+            let shift_value_r = _shift_mm256_by_k(r_value_nucs, v);
+            rolling_value_r = _mm256_and_si256(rolling_value_r, mm256_value_mask);
+            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_value_r);
         }
-
-        
-
-        //let compare_marker = _mm256_cmpgt_epi64(rolling_kmer_r_marker, rolling_kmer_f_marker);
-
-        //let canonical_markers_256 =
-        //    _mm256_blendv_epi8(rolling_kmer_r_marker, rolling_kmer_f_marker, compare_marker);
-
-        //        dbg!(rolling_kmer_f_marker,rolling_kmer_r_marker);
-        //        dbg!(print_string(u64::from_ne_bytes(_mm256_extract_epi64(rolling_kmer_f_marker,1).to_ne_bytes()), 31));
         
         
-        let hash_256_f = mm_hash256_masked(rolling_kmer_f_marker, mask);
-        let v1 = _mm256_extract_epi64(hash_256_f, 0) as u64;
-        let v2 = _mm256_extract_epi64(hash_256_f, 1) as u64;
-        let v3 = _mm256_extract_epi64(hash_256_f, 2) as u64;
-        let v4 = _mm256_extract_epi64(hash_256_f, 3) as u64;
+        let hash_key_f = mm_hash256_masked(rolling_key_f, None);
+        let h1 = _mm256_extract_epi64(hash_key_f, 0) as u64;
+        let h2 = _mm256_extract_epi64(hash_key_f, 1) as u64;
+        let h3 = _mm256_extract_epi64(hash_key_f, 2) as u64;
+        let h4 = _mm256_extract_epi64(hash_key_f, 3) as u64;
 
-        let kmer1 = _mm256_extract_epi64(rolling_kmer_f_marker, 0) as u64;
-        let kmer2 = _mm256_extract_epi64(rolling_kmer_f_marker, 1) as u64;
-        let kmer3 = _mm256_extract_epi64(rolling_kmer_f_marker, 2) as u64;
-        let kmer4 = _mm256_extract_epi64(rolling_kmer_f_marker, 3) as u64;
-        //        let threshold_256 = _mm256_cmpgt_epi64(cmp_thresh, hash_256);
-        //        let m1 = _mm256_extract_epi64(threshold_256, 0);
-        //        let m2 = _mm256_extract_epi64(threshold_256, 1);
-        //        let m3 = _mm256_extract_epi64(threshold_256, 2);
-        //        let m4 = _mm256_extract_epi64(threshold_256, 3);
+        let key1 = _mm256_extract_epi64(rolling_key_f, 0) as u64;
+        let key2 = _mm256_extract_epi64(rolling_key_f, 1) as u64;
+        let key3 = _mm256_extract_epi64(rolling_key_f, 2) as u64;
+        let key4 = _mm256_extract_epi64(rolling_key_f, 3) as u64;
 
-        if v1 < threshold_marker {
-            kmer_vec.push(kmer1 as u64);
+        let value1 = _mm256_extract_epi64(rolling_value_f, 0) as u64;
+        let value2 = _mm256_extract_epi64(rolling_value_f, 1) as u64;
+        let value3 = _mm256_extract_epi64(rolling_value_f, 2) as u64;
+        let value4 = _mm256_extract_epi64(rolling_value_f, 3) as u64;
+
+        if h1 < threshold_marker {
+            keys_vec.push(key1 as u64);
+            values_vec.push(value1 as u64);
         }
-        if v2 < threshold_marker {
-            kmer_vec.push(kmer2 as u64);
+        if h2 < threshold_marker {
+            keys_vec.push(key2 as u64);
+            values_vec.push(value2 as u64);
         }
-        if v3 < threshold_marker {
-            kmer_vec.push(kmer3 as u64);
+        if h3 < threshold_marker {
+            keys_vec.push(key3 as u64);
+            values_vec.push(value3 as u64);
         }
-        if v4 < threshold_marker {
-            kmer_vec.push(kmer4 as u64);
+        if h4 < threshold_marker {
+            keys_vec.push(key4 as u64);
+            values_vec.push(value4 as u64);
         }
 
         if bidirectional {
-            let hash_256_r = mm_hash256_masked(rolling_kmer_r_marker, mask);
-            let vr1 = _mm256_extract_epi64(hash_256_r, 0) as u64;
-            let vr2 = _mm256_extract_epi64(hash_256_r, 1) as u64;
-            let vr3 = _mm256_extract_epi64(hash_256_r, 2) as u64;
-            let vr4 = _mm256_extract_epi64(hash_256_r, 3) as u64;
+            let hash_key_r = mm_hash256_masked(rolling_key_r, None);
+            let hr1 = _mm256_extract_epi64(hash_key_r, 0) as u64;
+            let hr2 = _mm256_extract_epi64(hash_key_r, 1) as u64;
+            let hr3 = _mm256_extract_epi64(hash_key_r, 2) as u64;
+            let hr4 = _mm256_extract_epi64(hash_key_r, 3) as u64;
 
-            let rkmer1 = _mm256_extract_epi64(rolling_kmer_r_marker, 0) as u64;
-            let rkmer2 = _mm256_extract_epi64(rolling_kmer_r_marker, 1) as u64;
-            let rkmer3 = _mm256_extract_epi64(rolling_kmer_r_marker, 2) as u64;
-            let rkmer4 = _mm256_extract_epi64(rolling_kmer_r_marker, 3) as u64;
+            let rkey1 = _mm256_extract_epi64(rolling_key_r, 0) as u64;
+            let rkey2 = _mm256_extract_epi64(rolling_key_r, 1) as u64;
+            let rkey3 = _mm256_extract_epi64(rolling_key_r, 2) as u64;
+            let rkey4 = _mm256_extract_epi64(rolling_key_r, 3) as u64;
 
-            if vr1 < threshold_marker {
-                kmer_vec.push(rkmer1 as u64);
+            let rvalue1 = _mm256_extract_epi64(rolling_value_r, 0) as u64;
+            let rvalue2 = _mm256_extract_epi64(rolling_value_r, 1) as u64;
+            let rvalue3 = _mm256_extract_epi64(rolling_value_r, 2) as u64;
+            let rvalue4 = _mm256_extract_epi64(rolling_value_r, 3) as u64;
+
+            if hr1 < threshold_marker {
+                keys_vec.push(rkey1 as u64);
+                values_vec.push(rvalue1 as u64);
             }
-            if vr2 < threshold_marker {
-                kmer_vec.push(rkmer2 as u64);
+            if hr2 < threshold_marker {
+                keys_vec.push(rkey2 as u64);
+                values_vec.push(rvalue2 as u64);
             }
-            if vr3 < threshold_marker {
-                kmer_vec.push(rkmer3 as u64);
+            if hr3 < threshold_marker {
+                keys_vec.push(rkey3 as u64);
+                values_vec.push(rvalue3 as u64);
             }
-            if vr4 < threshold_marker {
-                kmer_vec.push(rkmer4 as u64);
+            if hr4 < threshold_marker {
+                keys_vec.push(rkey4 as u64);
+                values_vec.push(rvalue4 as u64);
             }
         }
     }

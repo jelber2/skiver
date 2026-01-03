@@ -112,15 +112,15 @@ impl fmt::Display for EditOperation {
             EditOperation::TC => write!(f, "T>C"),
             EditOperation::TG => write!(f, "T>G"),
 
-            EditOperation::_A => write!(f, "_>A"),
-            EditOperation::_C => write!(f, "_>C"),
-            EditOperation::_G => write!(f, "_>G"),
-            EditOperation::_T => write!(f, "_>T"),
+            EditOperation::_A => write!(f, "->A"),
+            EditOperation::_C => write!(f, "->C"),
+            EditOperation::_G => write!(f, "->G"),
+            EditOperation::_T => write!(f, "->T"),
 
-            EditOperation::A_ => write!(f, "A>_"),
-            EditOperation::C_ => write!(f, "C>_"),
-            EditOperation::G_ => write!(f, "G>_"),
-            EditOperation::T_ => write!(f, "T>_"),
+            EditOperation::A_ => write!(f, "A>-"),
+            EditOperation::C_ => write!(f, "C>-"),
+            EditOperation::G_ => write!(f, "G>-"),
+            EditOperation::T_ => write!(f, "T>-"),
 
             EditOperation::AMBIGUOUS => write!(f, "AMBIGUOUS"),
         }

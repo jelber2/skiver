@@ -76,24 +76,25 @@ impl KmerSet {
     }
 
 
-    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, bidirectional: bool, trim_front: usize, trim_back: usize) {
+    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, _value_vec: &mut Vec<u64>, c: usize, bidirectional: bool, trim_front: usize, trim_back: usize) {
         let start = std::cmp::min(trim_front, string.len());
         let end = string.len().saturating_sub(trim_back);
+
         // extract sketched kv-mers from the given sequence string
         #[cfg(any(target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
+                    extract_markers_avx2_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
                 }
             } else {
-                fmh_seeds_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
+                fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(&string[start..end], kmer_vec, c, self.key_size as usize, None, bidirectional);
+            fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
         }
     }
 
@@ -117,7 +118,8 @@ impl KmerSet {
                     Ok(record) => {
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, self.bidirectional, trim_front, trim_back);
+                        let mut _value_vec: Vec<u64> = Vec::new();
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, &mut _value_vec, c, self.bidirectional, trim_front, trim_back);
                         self.add_seed_vector(&kmer_vec);
                     }
                     Err(e) => {
@@ -174,7 +176,8 @@ impl KmerSet {
 
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, bidirectional, trim_front, trim_back);
+                        let mut _value_vec: Vec<u64> = Vec::new();
+                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, &mut _value_vec, c, bidirectional, trim_front, trim_back);
                         let (matched, total) = self.query_seed_vector(&kmer_vec);
                         //matched_kmers.push(matched);
                         //total_kmers.push(total);

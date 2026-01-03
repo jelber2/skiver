@@ -35,7 +35,7 @@ pub struct KVmerSet {
 
 impl KVmerSet {
     pub fn new(key_size: u8, value_size: u8, bidirectional: bool) -> Self {
-        assert!(key_size + value_size <= 32, "Currently, we only support k + v <= 32.");
+        assert!(key_size <= 32 && value_size <= 32, "Currently, we only support k, v <= 32.");
 
         let v_mask = (1 << (value_size * 2)) - 1;
         let k_mask = ((1 << (key_size * 2)) - 1) << (value_size * 2);
@@ -117,20 +117,19 @@ impl KVmerSet {
 
 
 
-    pub fn add_seed_vector(&mut self, seed_vec: &[u64]) {
-        for &kmer in seed_vec {
-            let key = (kmer & self.key_mask) >> (self.value_size * 2);
-            let value = kmer & self.value_mask;
-
+    pub fn add_kv_vector(&mut self, key_vec: &[u64], value_vec: &[u64]) {
+        assert!(key_vec.len() == value_vec.len(), "Key and value vectors must have the same length.");
+        for (&key, &value) in key_vec.iter().zip(value_vec.iter()) {
+            //println!("Adding key: {}, value: {}", self.to_key_string(key), self.to_value_string(value));
             let entry = self.key_value_map.entry(key).or_insert_with(HashMap::new);
             let count = entry.entry(value).or_insert(0);
             *count += 1;
         }
-        self.num_kvmers += seed_vec.len() as u32;
+        self.num_kvmers += key_vec.len() as u32;
     }
 
 
-    fn extract_markers_masked(&self, string: &[u8], kmer_vec: &mut Vec<u64>, c: usize, trim_front: usize, trim_back: usize) {
+    fn extract_markers_masked(&self, string: &[u8], key_vec: &mut Vec<u64>, value_vec: &mut Vec<u64>, c: usize, trim_front: usize, trim_back: usize) {
         let start = std::cmp::min(trim_front, string.len());
         let end = string.len().saturating_sub(trim_back);
         let string_trimmed = &string[start..end];
@@ -140,15 +139,15 @@ impl KVmerSet {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask as i64), self.bidirectional);
+                    extract_markers_avx2_masked(string_trimmed, key_vec, value_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
                 }
             } else {
-                fmh_seeds_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
+                fmh_seeds_masked(string_trimmed, key_vec, value_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(string_trimmed, kmer_vec, c, self.kv_size as usize, Some(self.key_mask), self.bidirectional);
+            fmh_seeds_masked(string_trimmed, key_vec, value_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
         }
     }
 
@@ -159,120 +158,30 @@ impl KVmerSet {
         c: usize,
         trim_front: usize,
         trim_back: usize,
-    ) {
-        /*
-        let reader = parse_fastx_file(&seq_file);
-        //println!("Reading file: {}", seq_file);
-        if !reader.is_ok() {
-            //println!("Not OK Reading file: {}", seq_file);
-            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
-        } else {
-            //println!("Reading file: {}", seq_file);
-            let mut reader = reader.unwrap();
-
-            
-            while let Some(record) = reader.next() {
-                
-                match record {
-                    Ok(record) => {
-                        let seq = record.seq();
-                        let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, trim_front, trim_back);
-                        self.add_seed_vector(&kmer_vec);
-                    }
-                    Err(e) => {
-                        warn!("Error reading record: {}", e);
-                    }
-                }
-            }
-            
-            let mut chunk: Vec<Vec<u8>> = Vec::with_capacity(NUM_READS_PER_CHUNK);
-            loop {
-                chunk.clear();
-                for _ in 0..NUM_READS_PER_CHUNK {
-                    if let Some(record) = reader.next() {
-                        match record {
-                            Ok(record) => {
-                                // copy the sequence bytes into an owned Vec<u8> so it does not borrow from `record`
-                                chunk.push(record.seq().to_vec());
-                            }
-                            Err(e) => {
-                                warn!("Error reading record: {}", e);
-                            }
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                if chunk.is_empty() {
-                    break;
-                }
-
-                let kmer_vecs: Vec<Vec<u64>> = chunk.par_iter()
-                    .map(|seq| {
-                        let mut kmer_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(seq.as_ref(), &mut kmer_vec, c, trim_front, trim_back);
-                        kmer_vec
-                    })
-                    .collect();
-
-                for kmer_vec in kmer_vecs {
-                    self.add_seed_vector(&kmer_vec);
-                }
-            }
-        }
-        */
+    ) { 
         
-        let (sender, receiver): (Sender<Vec<SequenceInfo>>, Receiver<Vec<SequenceInfo>>) = bounded(100);
         let seq_file_clone = seq_file.to_string();
-        let reader_thread = std::thread::spawn(move || {
-            let reader = parse_fastx_file(&seq_file_clone);
-            let mut batch: Vec<SequenceInfo> = Vec::with_capacity(NUM_READS_PER_CHUNK);
-            if !reader.is_ok() {
-                error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
-                return;
-            }
-            let mut reader = reader.unwrap();
-            while let Some(record) = reader.next() {
-                match record {
-                    Ok(record) => {
-                        // copy the sequence bytes into an owned Vec<u8> so it does not borrow from `record`
-                        let seq_info = SequenceInfo {
-                            seq: record.seq().to_vec(),
-                        };
-                        batch.push(seq_info);
-                        if batch.len() >= NUM_READS_PER_CHUNK {
-                            let to_send = std::mem::replace(&mut batch, Vec::with_capacity(NUM_READS_PER_CHUNK));
-                            if sender.send(to_send).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Error reading record: {}", e);
-                    }
+        let reader = parse_fastx_file(&seq_file_clone);
+        if !reader.is_ok() {
+            error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
+            return;
+        }
+        let mut reader = reader.unwrap();
+        while let Some(record) = reader.next() {
+            match record {
+                Ok(record) => {
+                    let mut key_vec: Vec<u64> = Vec::new();
+                    let mut value_vec: Vec<u64> = Vec::new();
+                    self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back);
+                    //println!("Extracted {} kv-mers from a read of length {}", key_vec.len(), record.seq().len());
+                    self.add_kv_vector(&key_vec, &value_vec);
+                }
+                Err(e) => {
+                    warn!("Error reading record: {}", e);
                 }
             }
-            // send any remaining reads after finishing the loop
-            if !batch.is_empty() {
-                let _ = sender.send(batch);
-            }
-        });
-
-        while let Ok(batch) = receiver.recv() {
-            let kmer_vecs: Vec<Vec<u64>> = batch.par_iter()
-                .map(|sequence| {
-                    let mut kmer_vec: Vec<u64> = Vec::new();
-                    self.extract_markers_masked(&sequence.seq, &mut kmer_vec, c, trim_front, trim_back);
-                    kmer_vec
-                })
-                .collect();
-
-            for kmer_vec in kmer_vecs {
-                self.add_seed_vector(&kmer_vec);
-            }
         }
-        reader_thread.join().unwrap();
+
     }
 
     pub fn containment_index(&self, other: &KVmerSet) -> (f64, f64) {
@@ -356,10 +265,7 @@ impl KVmerSet {
 
         for (key, value_map) in &self.key_value_map {
             
-            println!("Key: {}", self.to_key_string(*key));
-            for (value, count) in value_map {
-                println!("  Reference value: {}, count: {}", self.to_value_string(*value), count);
-            }
+            
 
             let mut max_count = 0;
             let mut sum_count = 0;
@@ -378,6 +284,11 @@ impl KVmerSet {
             if sum_count <= threshold {
                 continue;
             }
+
+            //println!("Key: {}", self.to_key_string(*key));
+            //for (value, count) in value_map {
+            //    println!("  Reference value: {}, count: {}", self.to_value_string(*value), count);
+            //}
 
             // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<EditOperation, u32> = HashMap::new();
@@ -808,7 +719,8 @@ impl VmerSet {
                     Ok(record) => {
                         let seq = record.seq();
                         let mut kmer_vec: Vec<u64> = Vec::new();
-                        fmh_seeds_masked(seq.as_ref(), &mut kmer_vec, c, self.value_size as usize, None, self.kvmer_set.bidirectional);
+                        let mut _value_vec: Vec<u64> = Vec::new();
+                        fmh_seeds_masked(seq.as_ref(), &mut kmer_vec, &mut _value_vec, c, self.value_size as usize, 0 as usize, self.kvmer_set.bidirectional);
                         self.add_to_keys(&kmer_vec);
                     }
                     Err(e) => {

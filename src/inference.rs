@@ -146,6 +146,33 @@ impl ErrorAnalyzer {
         (k, b)
     }
 
+    fn ridge_fit_f32(x: &Vec<f32>, y: &Vec<f32>, lambda: f32) -> (f32, f32) {
+        let n = x.len();
+        // Means
+        let mut sum_x = x.iter().sum::<f32>();
+        let mut sum_y = y.iter().sum::<f32>();
+
+        let mean_x = sum_x / n as f32;
+        let mean_y = sum_y / n as f32;
+
+        // Centered sums
+        let mut sxx = 0.0f32;
+        let mut sxy = 0.0f32;
+        for i in 0..n {
+            let dx = x[i] - mean_x;
+            let dy = y[i] - mean_y;
+            sxx += dx * dx;
+            sxy += dx * dy;
+        }
+
+        // Ridge on slope only
+        let denom = sxx + lambda;
+        let k = if denom != 0.0 { sxy / denom } else { 0.0 };
+        let b = mean_y - k * mean_x;
+
+        (k, b)
+    }
+
     /**
      * Calculate the mean of the ratios y/x
      */
@@ -305,7 +332,8 @@ impl ErrorAnalyzer {
         let y = hazard_ratios.iter()
             .map(|&hr| if hr > 0.0 { hr.ln() } else { 0.0 })
             .collect::<Vec<f32>>();
-        let (b, log_a) = Self::linear_fit_f32(&x, &y);
+        //let (b, log_a) = Self::linear_fit_f32(&x, &y);
+        let (b, log_a) = Self::ridge_fit_f32(&x, &y, 1.);
         
         
         let a = log_a.exp();
