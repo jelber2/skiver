@@ -69,10 +69,11 @@ pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: Option<i64>) -> __m256i { u
  * This is used to update the reverse kmer in the rolling hash.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
+pub unsafe fn _shift_mm256_left_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
     // shift left by 2*k - 2
     let shifted = match k {
-        
+        1 => { _mm256_slli_epi64(kmer, 0) }
+        2 => { _mm256_slli_epi64(kmer, 2) }
         3 => { _mm256_slli_epi64(kmer, 4) }
         4 => { _mm256_slli_epi64(kmer, 6) }
         5 => { _mm256_slli_epi64(kmer, 8) }
@@ -110,6 +111,48 @@ pub unsafe fn _shift_mm256_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
     };
     return shifted;
 }}
+
+#[target_feature(enable = "avx2")]
+pub unsafe fn _shift_mm256_right_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
+    // shift right by 2*k - 2
+    let shifted = match k {
+        1 => { _mm256_srli_epi64(kmer, 0) }
+        2 => { _mm256_srli_epi64(kmer, 2) }
+        3 => { _mm256_srli_epi64(kmer, 4) }
+        4 => { _mm256_srli_epi64(kmer, 6) }
+        5 => { _mm256_srli_epi64(kmer, 8) }
+        6 => { _mm256_srli_epi64(kmer, 10) }
+        7 => { _mm256_srli_epi64(kmer, 12) }
+        8 => { _mm256_srli_epi64(kmer, 14) }
+        9 => { _mm256_srli_epi64(kmer, 16) }
+        10 => { _mm256_srli_epi64(kmer, 18) }
+        11 => { _mm256_srli_epi64(kmer, 20) }
+        12 => { _mm256_srli_epi64(kmer, 22) }
+        13 => { _mm256_srli_epi64(kmer, 24) }
+        14 => { _mm256_srli_epi64(kmer, 26) }
+        15 => { _mm256_srli_epi64(kmer, 28) }
+        16 => { _mm256_srli_epi64(kmer, 30) }
+        17 => { _mm256_srli_epi64(kmer, 32) }
+        18 => { _mm256_srli_epi64(kmer, 34) }
+        19 => { _mm256_srli_epi64(kmer, 36) }
+        20 => { _mm256_srli_epi64(kmer, 38) }
+        21 => { _mm256_srli_epi64(kmer, 40) }
+        22 => { _mm256_srli_epi64(kmer, 42) }
+        23 => { _mm256_srli_epi64(kmer, 44) }
+        24 => { _mm256_srli_epi64(kmer, 46) }
+        25 => { _mm256_srli_epi64(kmer, 48) }
+        26 => { _mm256_srli_epi64(kmer, 50) }
+        27 => { _mm256_srli_epi64(kmer, 52) }
+        28 => { _mm256_srli_epi64(kmer, 54) }
+        29 => { _mm256_srli_epi64(kmer, 56) }
+        30 => { _mm256_srli_epi64(kmer, 58) }
+        31 => { _mm256_srli_epi64(kmer, 60) }
+        32 => { _mm256_srli_epi64(kmer, 62) }
+        _ => { panic!() }
+    };
+    return shifted;
+}}
+
 
 /**
  * Extract kmers using FracMinHash from a DNA string using AVX2 instructions.
@@ -149,45 +192,54 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
         let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
         // f_nucs = [nuc_f1, nuc_f2, nuc_f3, nuc_f4]
         let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
-        // r_nucs = [3 - nuc_f1, 3 - nuc_f2, 3 - nuc_f3, 3 - nuc_f4]
-        let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
         // rolling_key_f = (rolling_key_f << 2)
         rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
         // rolling_key_f = rolling_key_f | f_nucs
         rolling_key_f = _mm256_or_si256(rolling_key_f, f_nucs);
-        if bidirectional {
-            // rolling_key_r = (rolling_key_r >> 2)
-            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
-            // shift_nuc_r = r_nucs << (2*(k-1))
-            let shift_nuc_r = _shift_mm256_by_k(r_nucs, k);
-            // rolling_key_r = rolling_key_r | shift_nuc_r
-            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
-        }
     }
 
     // Initialize values
-    for i in k..k + v - 1 {
-        let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
-        let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
-        let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
-        let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
-
-
+    for i in 0..v {
+        let nuc_f1 = BYTE_TO_SEQ[string1[i + k - 1] as usize] as i64;
+        let nuc_f2 = BYTE_TO_SEQ[string2[i + k - 1] as usize] as i64;
+        let nuc_f3 = BYTE_TO_SEQ[string3[i + k - 1] as usize] as i64;
+        let nuc_f4 = BYTE_TO_SEQ[string4[i + k - 1] as usize] as i64;
         // f_nucs = [nuc_f1, nuc_f2, nuc_f3, nuc_f4]
         let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
         // value_f = (value_f << 2)
         rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
         // value_f = value_f | f_nucs
         rolling_value_f = _mm256_or_si256(rolling_value_f, f_nucs);
-        if bidirectional {
-            // r_nucs = [3 - nuc_f1, 3 - nuc_f2, 3 - nuc_f3, 3 - nuc_f4]
-            let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
+    }
+
+    if bidirectional {
+        // initialize key
+        for i in 0..v - 1 {
+            let nuc_r1 = 3 - BYTE_TO_SEQ[string1[i] as usize] as i64;
+            let nuc_r2 = 3 - BYTE_TO_SEQ[string2[i] as usize] as i64;
+            let nuc_r3 = 3 - BYTE_TO_SEQ[string3[i] as usize] as i64;
+            let nuc_r4 = 3 - BYTE_TO_SEQ[string4[i] as usize] as i64;
+            // r_nucs = [nuc_r1, nuc_r2, nuc_r3, nuc_r4]
+            let r_nucs = _mm256_set_epi64x(nuc_r4, nuc_r3, nuc_r2, nuc_r1);
             // rolling_value_r = (rolling_value_r >> 2)
             rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
-            // shift_nuc_r = r_nucs << (2*(v-1))
-            let shift_nuc_r = _shift_mm256_by_k(r_nucs, v);
-            // rolling_value_r = rolling_value_r | shift_nuc_r
-            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_nuc_r);
+            // rolling_value_r = rolling_value_r | (r_nucs << (2 * (v - 1)))
+            let shift_value_r = _shift_mm256_left_by_k(r_nucs, v);
+            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_value_r);
+        }
+
+        for i in 0..k {
+            let nuc_r1 = 3 - BYTE_TO_SEQ[string1[i + v - 1] as usize] as i64;
+            let nuc_r2 = 3 - BYTE_TO_SEQ[string2[i + v - 1] as usize] as i64;
+            let nuc_r3 = 3 - BYTE_TO_SEQ[string3[i + v - 1] as usize] as i64;
+            let nuc_r4 = 3 - BYTE_TO_SEQ[string4[i + v - 1] as usize] as i64;
+            // r_nucs = [nuc_r1, nuc_r2, nuc_r3, nuc_r4]
+            let r_nucs = _mm256_set_epi64x(nuc_r4, nuc_r3, nuc_r2, nuc_r1);
+            // rolling_key_r = (rolling_key_r >> 2)
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            // rolling_key_r = rolling_key_r | (r_nucs << (2 * (k - 1)))
+            let shift_nuc_r = _shift_mm256_left_by_k(r_nucs, k);
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
         }
     }
 
@@ -199,43 +251,42 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
     let mm256_value_mask = _mm256_set_epi64x(value_mask, value_mask, value_mask, value_mask);
 
     // iterate over the string
-    for i in k - 1..(len + k - 1) {
-        let nuc_key_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
-        let nuc_key_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
-        let nuc_key_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
-        let nuc_key_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+    for i in k + v - 1..(len + t - 1) {
+        let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
+        let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
+        let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
+        let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
 
-        let nuc_value_f1 = BYTE_TO_SEQ[string1[i + v] as usize] as i64;
-        let nuc_value_f2 = BYTE_TO_SEQ[string2[i + v] as usize] as i64;
-        let nuc_value_f3 = BYTE_TO_SEQ[string3[i + v] as usize] as i64;
-        let nuc_value_f4 = BYTE_TO_SEQ[string4[i + v] as usize] as i64;
 
-        let f_key_nucs = _mm256_set_epi64x(nuc_key_f4, nuc_key_f3, nuc_key_f2, nuc_key_f1);
-        let r_key_nucs = _mm256_sub_epi64(rev_sub, f_key_nucs);
+        let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
 
-        let f_value_nucs = _mm256_set_epi64x(nuc_value_f4, nuc_value_f3, nuc_value_f2, nuc_value_f1);
-        let r_value_nucs = _mm256_sub_epi64(rev_sub, f_value_nucs);
+        // find the first base of the value
+        // first_base_v = (rolling_value_f >> (2 * (v - 1))) & 0b11
+        let first_base_v = _mm256_and_si256(_shift_mm256_right_by_k(rolling_value_f, v), rev_sub);
 
         // f_marker = ((f_marker << 2) | f_nuc) & marker_mask
         rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
-        rolling_key_f = _mm256_or_si256(rolling_key_f, f_key_nucs);
+        rolling_key_f = _mm256_or_si256(rolling_key_f, first_base_v);
         rolling_key_f = _mm256_and_si256(rolling_key_f, mm256_key_mask);
 
         rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
-        rolling_value_f = _mm256_or_si256(rolling_value_f, f_value_nucs);
+        rolling_value_f = _mm256_or_si256(rolling_value_f, f_nucs);
         rolling_value_f = _mm256_and_si256(rolling_value_f, mm256_value_mask);
 
         if bidirectional {
-            // r_marker = ((r_marker >> 2) | (r_nuc << (2*(k-1)))) & rev_marker_mask
-            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
-            let shift_nuc_r = _shift_mm256_by_k(r_key_nucs, k);
-            rolling_key_r = _mm256_and_si256(rolling_key_r, mm256_key_mask);
-            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
+            // find the last base of the key
+            let last_base_k = _mm256_and_si256(rolling_key_r, rev_sub);
+            let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
 
             rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
-            let shift_value_r = _shift_mm256_by_k(r_value_nucs, v);
+            let shift_value_r = _shift_mm256_left_by_k(last_base_k, v);
             rolling_value_r = _mm256_and_si256(rolling_value_r, mm256_value_mask);
             rolling_value_r = _mm256_or_si256(rolling_value_r, shift_value_r);
+
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            let shift_nuc_r = _shift_mm256_left_by_k(r_nucs, k);
+            rolling_key_r = _mm256_and_si256(rolling_key_r, mm256_key_mask);
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
         }
         
         

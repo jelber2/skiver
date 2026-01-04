@@ -57,6 +57,9 @@ pub const BYTE_TO_SEQ: [u8; 256] = {
 };
 
 pub const SEQ_TO_BYTE: [u8; 4] = [b'A', b'C', b'G', b'T'];
+pub const SEQ_TO_CHAR: [char; 4] = ['A', 'C', 'G', 'T'];
+// A -> T (3), C -> G (2), G -> C (1), T -> A (0), N -> N (4)
+pub const SEQ_TO_COMPLEMENT_BIN: [u8; 5] = [3, 2, 1, 0, 4];
 
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
@@ -246,6 +249,10 @@ pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 10] = [
     EditOperation::T_,
 ];
 
+pub fn sbs96_str(op: &(EditOperation, u8, u8)) -> String {
+    format!("{}[{}]{}", SEQ_TO_CHAR[op.1 as usize], op.0, SEQ_TO_CHAR[op.2 as usize])
+}
+
 /**
  * kv-mer statistics for downstream analysis.
  */
@@ -259,10 +266,9 @@ pub struct KVmerStats {
     pub consensus_counts: Vec<u32>,
     pub total_counts: Vec<u32>,
     pub neighbor_counts: Vec<u32>,
-    pub error_counts: Vec<HashMap<EditOperation, u32>>,
+    pub error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>>,
 
     pub consensus_up_to_v_counts: Vec<Vec<u32>>,
-    pub error_up_to_v_counts: Vec<Vec<u32>>,
 }
 
 

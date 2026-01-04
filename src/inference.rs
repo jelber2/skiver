@@ -2,6 +2,7 @@ use std::hash::Hash;
 use std::path::Display;
 use std::collections::HashMap;
 
+
 use crate::types::*;
 use crate::constants::*;
 
@@ -18,7 +19,7 @@ pub struct ErrorSpectrum {
     pub hazard_rate_mean: (f32, (f32, f32)),
     pub hazard_rate_std: (f32, (f32, f32)),
 
-    pub snp_rate: Vec<(f32, (f32, f32))>,
+    pub snp_rate: HashMap<(EditOperation, u8, u8), f32>,
 
     pub bidirectional: bool,
 }
@@ -323,7 +324,11 @@ impl ErrorAnalyzer {
         (result.x[0] as f32, result.x[1] as f32)
     }
 
-
+    /*
+    ========================
+    Util functions for estimating the parameters of Weibull distribution
+    ========================
+    */
     fn fit_hazard_ratio_weibull_distribution(&self, hazard_ratios: &Vec<f32>, _sample_size: usize) -> (f32, f32) {
         // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
         let x = hazard_ratios.iter().enumerate().
@@ -355,13 +360,13 @@ impl ErrorAnalyzer {
         // [TODO] Return also the number of outliers for each v
         //let mut num_outliers = [0; stats.consensus_counts.len()];
         
-        for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..=stats.v {
-            if v - MIN_VALUE_FOR_ERROR_ESTIMATION == 0 {
+        for v in (1)..=stats.v {
+            if v - 1 == 0 {
                 x = &stats.total_counts;
                 y = &stats.consensus_up_to_v_counts[0];
             } else {
-                x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
-                y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+                x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
             }
             let ratio = x.iter().zip(y.iter())
                 .map(|(&xi, &yi)| if xi != 0 { yi as f32 / xi as f32 } else { 1. })
@@ -417,43 +422,43 @@ impl ErrorAnalyzer {
      * Estimate the error rate and 5-95% confidence interval using bootstrap
      * for all the error types
      */
-    pub fn estimate_error_rate(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<(f32, (f32, f32))> {
+    pub fn estimate_error_rate(&self, stats: &KVmerStats, indices: &Vec<usize>) -> HashMap<(EditOperation, u8, u8), f32> {
         // initialize the error count arrays
-        let operations: Vec<EditOperation> = if self.bidirectional {
-            ALL_OPERATIONS_CANONICAL.to_vec()
-        } else {
-            ALL_OPERATIONS.to_vec()
-        };
+        let mut error_counts: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
 
-        let mut error_counts: HashMap<EditOperation, Vec<u32>> = HashMap::new();
-        for op in operations.iter() {
-            error_counts.insert(*op, Vec::new());
+        indices.iter().for_each(|&i| {
+            for (op, count_map) in stats.error_counts[i].iter() {
+                let count = error_counts.entry(*op).or_insert(0);
+                *count += *count_map;
+            }
+        });
+        
+        // calculate the mean for each error type using the full error_counts vector
+        let mut estimates: HashMap<(EditOperation, u8, u8), f32> = HashMap::new();
+        let mut total_count: u32 = 0;
+        for op in if self.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+            for prev_base in 0..4 {
+                for next_base in 0..4 {
+                    total_count += error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
+                }
+            }
         }
 
-        for i in 0..stats.error_counts.len() {
-            for op in operations.iter() {
-                let count = stats.error_counts[i].get(op).cloned().unwrap_or(0);
-                error_counts.get_mut(op).unwrap().push(count);
+        for op in if self.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+            for prev_base in 0..4 {
+                for next_base in 0..4 {
+                    let count = error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
+                    let rate = if total_count > 0 {
+                        *count as f32 / total_count as f32
+                    } else {
+                        0.0
+                    };
+                    estimates.insert((*op, prev_base, next_base), rate);
+                }
             }
         }
         
-        // calculate the mean for each error type using the full error_counts vector
-        let mut estimates: HashMap<EditOperation, f32> = HashMap::new();
-        for op in operations.iter() {
-            let sum = self.sum_indices(&error_counts[op], indices);
-            estimates.insert(*op, sum as f32 / indices.len() as f32);
-        }
-        let total_counts = estimates.values().sum::<f32>();
-        for op in operations.iter() {
-            let rate = if total_counts > 0.0 {
-                estimates[op] / total_counts
-            } else {
-                0.0
-            };
-            estimates.insert(*op, rate);
-        }
-        
-
+        /*
         // bootstrap to estimate the 5-95% confidence interval
         let mut bootstrap_estimates: HashMap<EditOperation, Vec<f32>> = HashMap::new();
         for op in operations.iter() {
@@ -491,8 +496,9 @@ impl ErrorAnalyzer {
             let upper = estimates_op[(n as f32 * 0.95) as usize];
             result.push((mean, (lower, upper)));
         }
+        */
 
-        result
+        estimates
     }
 
     pub fn estimate_hazard_ratio_confidence_interval(&self, stats: &KVmerStats, indices: &Vec<usize>) -> ((f32, f32), (f32, f32)) {
@@ -507,13 +513,13 @@ impl ErrorAnalyzer {
 
             let mut hazard_ratios: Vec<f32> = Vec::new();
 
-            for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..=stats.v {
-                if v - MIN_VALUE_FOR_ERROR_ESTIMATION == 0 {
+            for v in 1..=stats.v {
+                if v - 1 == 0 {
                     x = &stats.total_counts;
                     y = &stats.consensus_up_to_v_counts[0];
                 } else {
-                    x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
-                    y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+                    x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                    y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
                 }
 
                 let h = self.calculate_ratio(x, y, &indices_sample);
@@ -550,13 +556,13 @@ impl ErrorAnalyzer {
 
         let mut hazard_ratios: Vec<f32> = Vec::new();
 
-        for v in (MIN_VALUE_FOR_ERROR_ESTIMATION)..=stats.v {
-            if v - MIN_VALUE_FOR_ERROR_ESTIMATION == 0 {
+        for v in 1..=stats.v {
+            if v - 1 == 0 {
                 x = &stats.total_counts;
                 y = &stats.consensus_up_to_v_counts[0];
             } else {
-                x = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION - 1) as usize];
-                y = &stats.consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize];
+                x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
             }
 
             println!("v={}, x_sum={}, y_sum={}", v, 
@@ -627,12 +633,17 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     result.push_str(&format!("{:.6},{:.6},", spectrum.estimated_alpha, spectrum.estimated_beta));
 
     // SNP rates
-    for (i, (mean, (lower, upper))) in spectrum.snp_rate.iter().enumerate() {
-        result.push_str(&format!("{:.6},{:.6}-{:.6}", mean, lower, upper));
-        if i != spectrum.snp_rate.len() - 1 {
-            result.push(',');
+    for op in if bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+        for prev_base in 0..4 {
+            for next_base in 0..4 {
+                let rate = spectrum.snp_rate.get(&(*op, prev_base, next_base)).unwrap_or(&0.0);
+                result.push_str(&format!("{:.6},", rate));
+            }
         }
     }
+
+    // remove the last comma
+    result.pop();
 
     result
 }
@@ -644,17 +655,10 @@ pub fn header_str(bidirectional: bool) -> String {
     result.push_str("mean,mean_ci,std,std_ci,");
     result.push_str("alpha,beta,");
 
-    if bidirectional {
-        for (i, op) in ALL_OPERATIONS_CANONICAL.iter().enumerate() {
-            result.push_str(&format!("{},{}_ci", op, op));
-            if i != ALL_OPERATIONS_CANONICAL.len() - 1 {
-                result.push(',');
-            }
-        }
-    } else {
-        for (i, op) in ALL_OPERATIONS.iter().enumerate() {
-            result.push_str(&format!("{},{}_ci", op, op));
-            if i != ALL_OPERATIONS.len() - 1 {
+    for op in if bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+        for prev_base in 0..4 {
+            for next_base in 0..4 {
+                result.push_str(&sbs96_str(&(*op, prev_base, next_base)));
                 result.push(',');
             }
         }

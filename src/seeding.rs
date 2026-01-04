@@ -111,56 +111,71 @@ pub fn fmh_seeds_masked(
         let nuc_r = 3 - nuc_f;
         rolling_key_f <<= 2;
         rolling_key_f |= nuc_f;
-        //        rolling_kmer_r = KmerEnc::rc(rolling_kmer_f, k);
-        if bidirectional {
+    }
+
+    // Initialize values
+    for i in 0..v {
+        let nuc_f = BYTE_TO_SEQ[string[i + k - 1] as usize] as u64;
+        let nuc_r = 3 - nuc_f;
+        rolling_value_f <<= 2;
+        rolling_value_f |= nuc_f;
+    }
+
+    // initialize for reverse complement
+    if bidirectional {
+        for i in 0..v - 1 {
+            let nuc_r = 3 - BYTE_TO_SEQ[string[i] as usize] as u64;
+            rolling_value_r >>= 2;
+            rolling_value_r |= nuc_r << (2 * (v - 1));
+        }
+
+        for i in 0..k {
+            let nuc_r = 3 - BYTE_TO_SEQ[string[i + v - 1] as usize] as u64;
             rolling_key_r >>= 2;
             rolling_key_r |= nuc_r << (2 * (k - 1));
         }
     }
 
-    // Initialize values
-    for i in k..k + v - 1 {
-        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        let nuc_r = 3 - nuc_f;
-        rolling_value_f <<= 2;
-        rolling_value_f |= nuc_f;
-
-        if bidirectional {
-            rolling_value_r >>= 2;
-            rolling_value_r |= nuc_r << (2 * (v - 1));
-        }
-    }
-
     // Iterate through the string
-    for i in k - 1..len - v {
-        let nuc_key_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        let nuc_key_r = 3 - nuc_key_f;
+    for i in k + v - 1..len {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+        
 
-        let nuc_value_f = BYTE_TO_SEQ[string[i + v] as usize] as u64;
-        let nuc_value_r = 3 - nuc_value_f;
+        // append the first base of the value to the key
+        let first_base_v = (rolling_value_f >> (2 * (v - 1))) & 0b11;
 
         rolling_key_f <<= 2;
-        rolling_key_f |= nuc_key_f;
+        rolling_key_f |= first_base_v;
         rolling_key_f &= key_mask;
 
         rolling_value_f <<= 2;
-        rolling_value_f |= nuc_value_f;
+        rolling_value_f |= nuc_f;
         rolling_value_f &= value_mask;
 
         let hash_f = mm_hash64_masked(rolling_key_f, None);
+
         if hash_f < threshold_marker {
             keys_vec.push(rolling_key_f as u64);
             values_vec.push(rolling_value_f as u64);
         }
+
         if bidirectional {
-            rolling_key_r >>= 2;
-            rolling_key_r &= key_mask;
-            rolling_key_r |= (nuc_value_r << (2 * (k - 1)));
+            //let nuc_value_r = 3 - BYTE_TO_SEQ[string[i + v - 1] as usize] as u64;
+            //let nuc_key_r = 3 - BYTE_TO_SEQ[string[i + k + v - 1] as usize] as u64;
+            let nuc_r = 3 - nuc_f;
+
+            let last_base_k = (rolling_key_r & 0b11);
 
             rolling_value_r >>= 2;
+            rolling_value_r |= (last_base_k << (2 * (v - 1)));
             rolling_value_r &= value_mask;
-            rolling_value_r |= (nuc_key_r << (2 * (v - 1)));
 
+            rolling_key_r >>= 2;
+            rolling_key_r |= (nuc_r << (2 * (k - 1)));
+            rolling_key_r &= key_mask;
+            
+
+            
             let hash_r = mm_hash64_masked(rolling_key_r, None);
             if hash_r < threshold_marker {
                 keys_vec.push(rolling_key_r as u64);

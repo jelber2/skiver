@@ -250,7 +250,8 @@ class KVMerReport:
         for field_set, title in zip([substitution_fields, insertion_fields, deletion_fields], ["Substitutions", "Insertions", "Deletions"]):
             for field in field_set:
                 y_sum = self.report_data_df[filt][field].sum()
-                x_sum = self.report_data_df[filt]["consensus_count"].sum() +  self.report_data_df[filt]["neighbor_count"].sum() - y_sum
+                #x_sum = self.report_data_df[filt]["consensus_count"].sum() +  self.report_data_df[filt]["neighbor_count"].sum() - y_sum
+                x_sum = self.report_data_df[filt]["total_count"].sum()
 
                 ratio = y_sum / x_sum if x_sum > 0 else 0
                 mutation_spectrum[field] = ratio
@@ -399,10 +400,11 @@ class KVMerReport:
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_ref.csv")
     #report = KVMerReport("./ERR3152366.csv")
-    #report = KVMerReport("./ERR2935851.csv")
+    report = KVMerReport("./ERR2935851.csv")
     #report = KVMerReport("./SRR7415629.csv")
     #report = KVMerReport("./HG002.csv")
-    report = KVMerReport("./sarscov.csv")
+    #report = KVMerReport("./sarscov.csv")
+    #report = KVMerReport("./test_96_21_11.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
@@ -415,7 +417,7 @@ if __name__ == "__main__":
     #report.estimation_with_different_coverage(filter=filt)
 
     #filt = (report.report_data_df["total_count"] >= 11)
-    filt = (report.report_data_df["total_count"] >= 10) # & (report.report_data_df["homopolymer_length"] == 2)
+    filt = (report.report_data_df["total_count"] >= 5) # & (report.report_data_df["homopolymer_length"] == 2)
     #filt = report.report_data_df["total_count"] > 5
     #v_values, lambda_stats = report.calculate_lambda_stats(filter=filt)
     #lambda_regression = report._linear_regression(v_values, lambda_stats)

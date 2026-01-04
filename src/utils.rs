@@ -5,26 +5,42 @@ use std::collections::HashMap;
 
 /**
  * Get all neighbors (kmers with edit distance 1) of a given kmer value
- * Returns a hashmap of neighbor kmer value to (EditOperation, position)
+ * Returns a hashmap of neighbor kmer value to (EditOperation, previous_base, next_base)
  */
-pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, (EditOperation, u8)> {
+pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, (EditOperation, u8, u8)> {
     // get all the values with edit distance 1 from the input value
 
-    let mut neighbors: HashMap<u64, (EditOperation, u8)> = HashMap::new();
+    let mut neighbors: HashMap<u64, (EditOperation, u8, u8)> = HashMap::new();
     let bases = [0, 1, 2, 3]; // A, C, G, T
 
     for i in 0..value_size {
         let shift = i * 2;
+        let previous_base: u8 = if i == 0 {
+            4 // N
+        } else {
+            ((value >> (shift - 2)) & 0b11) as u8
+        };
+        let next_base: u8 = if i == value_size - 1 {
+            4 // N
+        } else {
+            ((value >> (shift + 2)) & 0b11) as u8
+        };
         
         // Substitutions
         for &b in &bases {
             let current_base = (value >> shift) & 0b11;
+
             if b != current_base {
                 let neighbor = (value & !(0b11 << shift)) | (b << shift);
                 if bidirectional {
-                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), value_size - i - 1));
+                    if current_base <= 1 {
+                        // insert the reverse complement substitution
+                        neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize]));
+                    } else {
+                        neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), previous_base, next_base));
+                    }
                 } else {
-                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), value_size - i - 1));
+                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), previous_base, next_base));
                 }
                 
             }
@@ -41,20 +57,26 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
             let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
             if bidirectional {
                 neighbors.entry(neighbor_insert)
-                .and_modify(|(op, pos)|
+                .and_modify(|(op, _prev, _next)|
                     if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
                     }
                 )
-                .or_insert((BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), value_size - i - 1));
+                .or_insert(if b <= 1 {
+                    (BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize])
+                } else {
+                    (BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), previous_base, next_base)
+                });
             } else {
                 neighbors.entry(neighbor_insert)
-                .and_modify(|(op, pos)| {
+                .and_modify(|(op, _prev, _next)| {
                     if *op != BASES_TO_INSERTION[b as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
                     }
                 })
-                .or_insert((BASES_TO_INSERTION[b as usize].unwrap(), value_size - i - 1));
+                .or_insert(
+                    (BASES_TO_INSERTION[b as usize].unwrap(), previous_base, next_base)
+                );
             }
             
             
@@ -64,26 +86,31 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
             let original_base = (value >> shift) & 0b11;
             if bidirectional {
                 neighbors.entry(neighbor_delete)
-                .and_modify(|(op, pos)| 
+                .and_modify(|(op, _prev, _next)| 
                     if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
                     }
                 )
-                .or_insert((BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), value_size - i - 1));
+                .or_insert(if original_base <= 1 {
+                    (BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize])
+                } else {
+                    (BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), previous_base, next_base)
+                });
             } else {
                 neighbors.entry(neighbor_delete)
-                .and_modify(|(op, pos)| 
+                .and_modify(|(op, _prev, _next)| 
                     if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
                     }
                 )
-                .or_insert((BASES_TO_DELETION[original_base as usize].unwrap(), value_size - i - 1));
+                .or_insert(
+                    (BASES_TO_DELETION[original_base as usize].unwrap(), previous_base, next_base)
+                );
             }
         }
     }
 
     neighbors
-
 }
 
 pub fn _kmer_to_string(kmer: u64, k: u8) -> String {
