@@ -57,7 +57,7 @@ pub const BYTE_TO_SEQ: [u8; 256] = {
 };
 
 pub const SEQ_TO_BYTE: [u8; 4] = [b'A', b'C', b'G', b'T'];
-pub const SEQ_TO_CHAR: [char; 4] = ['A', 'C', 'G', 'T'];
+pub const SEQ_TO_CHAR: [char; 5] = ['A', 'C', 'G', 'T', 'N'];
 // A -> T (3), C -> G (2), G -> C (1), T -> A (0), N -> N (4)
 pub const SEQ_TO_COMPLEMENT_BIN: [u8; 5] = [3, 2, 1, 0, 4];
 

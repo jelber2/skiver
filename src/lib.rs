@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn test_kmer_neighbors() {
-        let value = 0b11010001110111;
+        let value = 0b11000001110111;
 
         let value_length = 7;
         //let key_length = 5; // arbitrary
@@ -30,7 +30,7 @@ mod tests {
         //let kvmer = kvmer::KVmerSet::new(key_length, value_length, false);
         //let neighbors = _get_neighbors(value, value_length, false);
         println!("Original value: {}", _kmer_to_string(value, value_length));
-        _show_neighbors(value, value_length, false);
+        _show_neighbors(value, value_length, true);
         
         assert_eq!(1., 2.);
     }

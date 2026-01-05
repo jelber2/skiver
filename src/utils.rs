@@ -15,15 +15,15 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
 
     for i in 0..value_size {
         let shift = i * 2;
-        let previous_base: u8 = if i == 0 {
-            4 // N
-        } else {
-            ((value >> (shift - 2)) & 0b11) as u8
-        };
-        let next_base: u8 = if i == value_size - 1 {
-            4 // N
+        let previous_base: u8 = if i == value_size - 1 {
+            4 // N (unknown)
         } else {
             ((value >> (shift + 2)) & 0b11) as u8
+        };
+        let next_base: u8 = if i == 0 {
+            4 // N (unknown)
+        } else {
+            ((value >> (shift - 2)) & 0b11) as u8
         };
         
         // Substitutions
@@ -130,7 +130,7 @@ pub fn _show_neighbors(kmer: u64, k: u8, bidirectional: bool) {
 
     let neighbors = _get_neighbors(kmer, k, bidirectional);
     for (neighbor, op) in neighbors {
-        println!("Neighbor: {}, Operation: {:?}", _kmer_to_string(neighbor, k), op);
+        println!("Neighbor: {}, Operation: {}", _kmer_to_string(neighbor, k), sbs96_str(&op));
     }
 }
 

@@ -37,13 +37,7 @@ pub fn analyze(args: AnalyzeArgs) {
     }
     info!("Finished processing query files.");
 
-    let analyzer = ErrorAnalyzer::new(args.k,
-                                      args.bidirectional,
-                                      !args.use_all,
-                                      args.outlier_threshold,
-                                      args.estimation_method.clone(),
-                                      args.num_experiments,
-                                      args.bootstrap_sample_rate);
+    let analyzer = ErrorAnalyzer::new(args.clone());
 
     
     let stats: KVmerStats;

@@ -50,7 +50,7 @@ pub struct SketchArgs {
 }
 
 
-#[derive(Args, Default)]
+#[derive(Args, Default, Clone)]
 pub struct AnalyzeArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
@@ -58,7 +58,7 @@ pub struct AnalyzeArgs {
     #[clap(short = 'k', default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short = 'v', default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short = 'v', default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
     #[clap(short = 'c', default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
@@ -91,14 +91,20 @@ pub struct AnalyzeArgs {
     #[clap(short = 'b', long = "trim-back", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
+    #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
+    pub ignore_last_hazard_ratios: usize,
+
     #[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     pub threads: usize,
 
     #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
 
-    #[clap(long = "estimation_method", default_value_t = String::from("slope"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
+    #[clap(long, default_value_t = String::from("slope"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
+
+    #[clap(long, help_heading = "OUTPUT", hidden = true, help = "Output the estimated hazard ratio and their confidence intervals.")]
+    pub hazard_ratio: Option<String>,
 }
 
 #[derive(Args, Default)]
