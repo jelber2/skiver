@@ -273,7 +273,7 @@ impl KVmerSet {
             }
 
             // skip low coverage keys
-            if sum_count <= threshold {
+            if max_count <= threshold {
                 continue;
             }
 
@@ -391,7 +391,7 @@ impl KVmerSet {
             // [FIXME] skip if max_value != consensus_value?
 
             // skip low coverage keys
-            if sum_count <= threshold {
+            if max_count <= threshold {
                 continue;
             }
 
