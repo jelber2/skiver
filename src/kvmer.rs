@@ -493,12 +493,14 @@ impl KVmerSet {
             ).unwrap();
             if show_error_types {
                 for op in if self.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
-                    for prev_base in 0..4 {
-                        for next_base in 0..4 {
+                    let mut total_count: u32 = 0;
+                    for prev_base in 0..5 {
+                        for next_base in 0..5 {
                             let count = stats.error_counts[i].get(&(*op, prev_base, next_base)).unwrap_or(&0);
-                            write!(writer, ",{}", count).unwrap();
+                            total_count += *count;
                         }
                     }
+                    write!(writer, ",{}", total_count).unwrap();
                 }
             }
             if show_error_vs_v {
