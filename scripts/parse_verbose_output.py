@@ -59,7 +59,7 @@ class KVMerReport:
     
     def analyze_with_plot(self, filter=None):
         # Plot lambda vs. v and p00 vs. v
-        v_values, lambda_stats = self.calculate_lambda_stats(filter=filter)
+        #v_values, lambda_stats = self.calculate_lambda_stats(filter=filter)
         v_values, p00_stats = self.calculate_p00_stats(filter=filter)
         plt.figure(figsize=(12, 6))
         
@@ -67,6 +67,7 @@ class KVMerReport:
         x = np.array(v_values)
         k = len(self.report_data_df["key"].iloc[0])
 
+        """
         # Lambda regression and plot its fit on subplot 1
         y_lambda = np.array(lambda_stats)
         if x.size > 1 and y_lambda.size == x.size:
@@ -79,6 +80,7 @@ class KVMerReport:
             plt.title('Lambda vs. v')
             plt.xlabel('v')
             plt.ylabel('Lambda')
+        """
 
         # P00 regression: compute and plot its fit on subplot 2
         y_p00 = np.array(p00_stats)
@@ -400,7 +402,7 @@ class KVMerReport:
 if __name__ == "__main__":
     #report = KVMerReport("./ERR3152366_ref.csv")
     #report = KVMerReport("./ERR3152366.csv")
-    report = KVMerReport("./ERR2935851.csv")
+    #report = KVMerReport("./ERR2935851.csv")
     #report = KVMerReport("./SRR7415629.csv")
     #report = KVMerReport("./HG002.csv")
     #report = KVMerReport("./sarscov.csv")
@@ -408,6 +410,7 @@ if __name__ == "__main__":
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/two_strain_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/K12_MG1655_output.csv")
     #report = KVMerReport("/home/ubuntu/kv-mer-test/output/multiple_alleles/O157_H7_output.csv")
+    report = KVMerReport("/home/ubuntu/kv-mer-test/output/human/HG002_R941_kvmer_verbose.csv")
     #report = KVMerReport("./Ecoli_K12_MG1655_id_96.csv")
 
     #report.plot_consensus_distribution(v=1)

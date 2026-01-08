@@ -30,7 +30,7 @@ pub struct SketchArgs {
     #[clap(short, default_value_t = 21, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 10, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short, default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
     #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
@@ -100,7 +100,7 @@ pub struct AnalyzeArgs {
     #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
 
-    #[clap(long, default_value_t = String::from("slope"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
+    #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
 
     #[clap(long, help_heading = "OUTPUT", hidden = true, help = "Output the estimated hazard ratio and their confidence intervals.")]
