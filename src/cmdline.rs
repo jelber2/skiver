@@ -47,6 +47,9 @@ pub struct SketchArgs {
 
     #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
+
+    #[clap(long = "bidirectional", help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads. Default: use only the forward strand (false).")]
+    pub bidirectional: bool,
 }
 
 

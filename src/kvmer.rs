@@ -435,9 +435,9 @@ impl KVmerSet {
             neighbor_counts.push(num_neighbors);
         }
 
-        println!("Total count of kvmers that match reference: {}", shared_kmer_count);
-        println!("Number of kvmers in read set: {}", self.num_kvmers);
-        println!("Proportion of kvmers that match reference: {:.4}%", shared_kmer_count as f64 / self.num_kvmers as f64 * 100.);
+        //println!("Total count of kvmers that match reference: {}", shared_kmer_count);
+        //println!("Number of kvmers in read set: {}", self.num_kvmers);
+        //println!("Proportion of kvmers that match reference: {:.4}%", shared_kmer_count as f64 / self.num_kvmers as f64 * 100.);
 
         KVmerStats {
             k: self.key_size,

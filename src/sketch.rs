@@ -12,7 +12,7 @@ pub fn sketch(args: SketchArgs) {
     rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
     info!("Processing query files...");
     
-    let mut kvmer_set = KVmerSet::new(args.k, args.v, false);
+    let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
     for file in &args.files {
         kvmer_set.add_file_to_kvmer_set(file, args.c, args.trim_front, args.trim_back);
     }
