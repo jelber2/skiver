@@ -12,6 +12,8 @@ use scirs2_stats::regression::{linear_regression, ridge_regression, lasso_regres
 use scirs2_core::ndarray::{array, Array1};
 use log::info;
 use rand::Rng;
+use argmin::core::{CostFunction, Error, Executor};
+use argmin::solver::neldermead::NelderMead;
 
 
 pub struct ErrorSpectrum {
@@ -331,7 +333,9 @@ impl ErrorAnalyzer {
     Util functions for estimating the parameters of Weibull distribution
     ========================
     */
-    fn fit_hazard_ratio_weibull_distribution(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
+
+    /// Assume hazard ratio follows Weibull distribution: hazard ratio = a * (i + k)^b
+    fn fit_hazard_ratio_weibull_distribution_power_law(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
         // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
         let x = hazard_ratios.iter().enumerate().
             map(|(i, _)| (i as f32 + self.args.k as f32).ln())
@@ -347,6 +351,105 @@ impl ErrorAnalyzer {
 
         (a, b)
     }
+
+
+    /// Assume hazard ratio follows discrete Weibull distribution 
+    /// h(t) = 1 - exp(-lambda * ((t+1)^beta - t^beta))
+    /// By approximation, we can fit log(-log(1 - hazard ratio)) \approx log(lambda) + beta * log(t)
+    fn fit_hazard_ratio_weibull_distribution_cloglog(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
+        // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
+        let x = hazard_ratios.iter().enumerate().
+            map(|(i, _)| (i as f32 + self.args.k as f32).ln())
+            .collect::<Vec<f32>>();
+        // complementary log-log
+        let y = hazard_ratios.iter()
+            .map(|&hr| if hr < 1.0 { (-(1. - hr).ln()).ln() } else { 0.0 })
+            .collect::<Vec<f32>>();
+        //let (b, log_a) = Self::linear_fit_f32(&x, &y);
+        let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
+        
+        
+        let lambda = intercept.exp();
+        let beta = slope;
+
+
+        (lambda, beta)
+    }
+
+
+    pub struct DiscreteWeibullNll {
+        pub data: Vec<TimePoint>,
+        pub eps: f64, // small clamp to avoid log(0)
+    }
+    
+    impl DiscreteWeibullNll {
+        pub fn new(data: Vec<(u32, u32, u32)>) -> Self {
+            Self { data, eps: 1e-15 }
+        }
+    }
+
+    impl CostFunction for DiscreteWeibullNll {
+    
+        fn cost(&self, p: &Vec<f32>) -> Result<f32, Error> {
+            let alpha = p[0];
+            let beta = p[1];
+            let lambda = alpha.exp();
+            let k = beta.exp();
+    
+            let mut nll = 0.0;
+    
+            for tp in &self.data {
+                let (t, num_candidates, num_survival) = tp;
+    
+                // Delta_t(k) = (t+1)^k - t^k
+                let dt = (t + 1.).powf(k) - t.powf(k);
+    
+                // x = -lambda * Delta <= 0
+                let x = -lambda * dt;
+                let mut log_h = (1- x.exp()).ln();
+    
+                // Clamp if numerical issues ever cause -inf
+                // (e.g., if h extremely tiny or exactly 0 in floating point)
+                if !log_h.is_finite() {
+                    // h ~ eps
+                    log_h = self.eps.ln();
+                }
+
+                let log_one_minus_h = if log_one_minus_h.is_finite() {
+                    log_one_minus_h.max(self.eps.ln())
+                } else {
+                    self.eps.ln()
+                };
+
+                nll -= d * log_h + (r - d) * log_one_minus_h;
+            }
+    
+            Ok(nll)
+        }
+    }
+    
+
+
+    fn fit_hazard_ratio_weibull_distribution_mle(&self, x: &Vec<u32>, y: &Vec<u32>) {
+        let data: Vec<(u32, u32, u32)> = x.iter().zip(y.iter()).enumerate()
+            .map(|(i, (&xi, &yi))| (i as u32 + self.args.k as u32, xi, yi))
+            .collect();
+        
+        let problem = DiscreteWeibullNll::new(data);
+        let init_params = vec![-9.0f32, 0.0f32]; // log(alpha), log(beta)
+
+        let solver = NelderMead::new();
+        let res = Executor::new(problem, solver, init_params)
+            .max_iters(1000)
+            .run()
+            .unwrap();
+        
+        let log_alpha = res.state().best_param[0];
+        let log_beta = res.state().best_param[1];
+        
+        
+    }
+
 
     
 
@@ -527,7 +630,7 @@ impl ErrorAnalyzer {
             // estimate the parameters of the beta distribution
             //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
 
-            let (a, b) = self.fit_hazard_ratio_weibull_distribution(&hazard_ratios);
+            let (a, b) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
             a_list.push(a);
             b_list.push(b);
         }
@@ -570,11 +673,14 @@ impl ErrorAnalyzer {
     }
 
 
-    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, Vec<f32>) {
+    // returns (estimated_a, estimated_b, hazard_ratios, x_sum, y_sum)
+    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, Vec<f32>, Vec<u32>, Vec<u32>) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
 
         let mut hazard_ratios: Vec<f32> = Vec::new();
+        let mut x_sum: Vec<u32> = Vec::new();
+        let mut y_sum: Vec<u32> = Vec::new();
 
         for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
             if v - 1 == 0 {
@@ -594,6 +700,8 @@ impl ErrorAnalyzer {
 
             let h = self.calculate_ratio(x, y, indices);
             hazard_ratios.push(1. - h);
+            x_sum.push(self.sum_indices(x, indices));
+            y_sum.push(self.sum_indices(y, indices));
         }
         /*
         for &h in hazard_ratios.iter() {
@@ -609,9 +717,9 @@ impl ErrorAnalyzer {
         (mean, std, alpha, beta)
         */
 
-        let (a, b) = self.fit_hazard_ratio_weibull_distribution(&hazard_ratios);
+        let (a, b) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
         //println!("Weibull parameters: alpha = {}, beta = {}", a, b);
-        (a, b, hazard_ratios)
+        (a, b, hazard_ratios, x_sum, y_sum)
 
         
     }
@@ -671,7 +779,7 @@ impl ErrorAnalyzer {
         let error_rates = self.estimate_error_rate(stats, &indices);
 
         // estimate hazard ratio parameters
-        let (a, b, hazard_ratio) = self.estimate_hazard_ratio(stats, &indices);
+        let (a, b, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (a_ci, b_ci, hazard_ratio_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
 
         if let Some(hazard_ratio_output) = &self.args.hazard_ratio {
@@ -681,10 +789,12 @@ impl ErrorAnalyzer {
             let file = File::create(hazard_ratio_output).expect("Could not create hazard ratio output file.");
             let mut writer = BufWriter::new(file);
 
-            writeln!(writer, "v,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
+            writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
             for v in 0..hazard_ratio.len() {
-                writeln!(writer, "{},{:.6},{:.6},{:.6}", 
-                    v + 1, 
+                writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}", 
+                    v + 1 + self.args.k as usize,
+                    x_sum[v],
+                    y_sum[v],
                     hazard_ratio[v], 
                     hazard_ratio_ci[v].0, 
                     hazard_ratio_ci[v].1
