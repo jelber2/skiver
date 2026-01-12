@@ -17,13 +17,13 @@ use argmin::solver::neldermead::NelderMead;
 
 
 pub struct ErrorSpectrum {
-    pub estimated_a: (f32, (f32, f32)),
-    pub estimated_b: (f32, (f32, f32)),
+    pub estimated_lambda: (f32, (f32, f32)),
+    pub estimated_beta: (f32, (f32, f32)),
     
     pub key_coverage: (f32, (f32, f32)),
     pub estimated_coverage: (f32, (f32, f32)),
 
-    pub snp_rate: HashMap<(EditOperation, u8, u8), f32>,
+    pub snp_rate: HashMap<(EditOperation, u8, u8), u32>,
 
     pub bidirectional: bool,
 }
@@ -157,8 +157,12 @@ impl ErrorAnalyzer {
         let mut sum_x = x.iter().sum::<f32>();
         let mut sum_y = y.iter().sum::<f32>();
 
+        //println!("sum_x: {}, sum_y: {}", sum_x, sum_y);
+
         let mean_x = sum_x / n as f32;
         let mean_y = sum_y / n as f32;
+
+        //println!("mean_x: {}, mean_y: {}", mean_x, mean_y);
 
         // Centered sums
         let mut sxx = 0.0f32;
@@ -170,10 +174,14 @@ impl ErrorAnalyzer {
             sxy += dx * dy;
         }
 
+        //println!("sxx: {}, sxy: {}", sxx, sxy);
+
         // Ridge on slope only
         let denom = sxx + lambda;
         let k = if denom != 0.0 { sxy / denom } else { 0.0 };
         let b = mean_y - k * mean_x;
+
+        //println!("k: {}, b: {}", k, b);
 
         (k, b)
     }
@@ -361,93 +369,19 @@ impl ErrorAnalyzer {
         let x = hazard_ratios.iter().enumerate().
             map(|(i, _)| (i as f32 + self.args.k as f32).ln())
             .collect::<Vec<f32>>();
-        // complementary log-log
+        // complementary log-log, clip hazard ratios to avoid log(0)
         let y = hazard_ratios.iter()
-            .map(|&hr| if hr < 1.0 { (-(1. - hr).ln()).ln() } else { 0.0 })
+            .map(|&hr|
+                (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
             .collect::<Vec<f32>>();
         //let (b, log_a) = Self::linear_fit_f32(&x, &y);
         let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
         
         
-        let lambda = intercept.exp();
-        let beta = slope;
-
+        let beta = slope + 1.;
+        let lambda = intercept.exp() / beta;
 
         (lambda, beta)
-    }
-
-
-    pub struct DiscreteWeibullNll {
-        pub data: Vec<TimePoint>,
-        pub eps: f64, // small clamp to avoid log(0)
-    }
-    
-    impl DiscreteWeibullNll {
-        pub fn new(data: Vec<(u32, u32, u32)>) -> Self {
-            Self { data, eps: 1e-15 }
-        }
-    }
-
-    impl CostFunction for DiscreteWeibullNll {
-    
-        fn cost(&self, p: &Vec<f32>) -> Result<f32, Error> {
-            let alpha = p[0];
-            let beta = p[1];
-            let lambda = alpha.exp();
-            let k = beta.exp();
-    
-            let mut nll = 0.0;
-    
-            for tp in &self.data {
-                let (t, num_candidates, num_survival) = tp;
-    
-                // Delta_t(k) = (t+1)^k - t^k
-                let dt = (t + 1.).powf(k) - t.powf(k);
-    
-                // x = -lambda * Delta <= 0
-                let x = -lambda * dt;
-                let mut log_h = (1- x.exp()).ln();
-    
-                // Clamp if numerical issues ever cause -inf
-                // (e.g., if h extremely tiny or exactly 0 in floating point)
-                if !log_h.is_finite() {
-                    // h ~ eps
-                    log_h = self.eps.ln();
-                }
-
-                let log_one_minus_h = if log_one_minus_h.is_finite() {
-                    log_one_minus_h.max(self.eps.ln())
-                } else {
-                    self.eps.ln()
-                };
-
-                nll -= d * log_h + (r - d) * log_one_minus_h;
-            }
-    
-            Ok(nll)
-        }
-    }
-    
-
-
-    fn fit_hazard_ratio_weibull_distribution_mle(&self, x: &Vec<u32>, y: &Vec<u32>) {
-        let data: Vec<(u32, u32, u32)> = x.iter().zip(y.iter()).enumerate()
-            .map(|(i, (&xi, &yi))| (i as u32 + self.args.k as u32, xi, yi))
-            .collect();
-        
-        let problem = DiscreteWeibullNll::new(data);
-        let init_params = vec![-9.0f32, 0.0f32]; // log(alpha), log(beta)
-
-        let solver = NelderMead::new();
-        let res = Executor::new(problem, solver, init_params)
-            .max_iters(1000)
-            .run()
-            .unwrap();
-        
-        let log_alpha = res.state().best_param[0];
-        let log_beta = res.state().best_param[1];
-        
-        
     }
 
 
@@ -513,7 +447,7 @@ impl ErrorAnalyzer {
      * Estimate the error rate and 5-95% confidence interval using bootstrap
      * for all the error types
      */
-    pub fn estimate_error_rate(&self, stats: &KVmerStats, indices: &Vec<usize>) -> HashMap<(EditOperation, u8, u8), f32> {
+    pub fn estimate_error_rate(&self, stats: &KVmerStats, indices: &Vec<usize>) -> HashMap<(EditOperation, u8, u8), u32> {
         // initialize the error count arrays
         let mut error_counts: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
 
@@ -525,26 +459,12 @@ impl ErrorAnalyzer {
         });
         
         // calculate the mean for each error type using the full error_counts vector
-        let mut estimates: HashMap<(EditOperation, u8, u8), f32> = HashMap::new();
-        let mut total_count: u32 = 0;
-        for op in if self.args.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
-            for prev_base in 0..4 {
-                for next_base in 0..4 {
-                    total_count += error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
-                }
-            }
-        }
-
+        let mut estimates: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
         for op in if self.args.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
             for prev_base in 0..4 {
                 for next_base in 0..4 {
                     let count = error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
-                    let rate = if total_count > 0 {
-                        *count as f32 / total_count as f32
-                    } else {
-                        0.0
-                    };
-                    estimates.insert((*op, prev_base, next_base), rate);
+                    estimates.insert((*op, prev_base, next_base), *count);
                 }
             }
         }
@@ -600,8 +520,8 @@ impl ErrorAnalyzer {
         let mut y: &Vec<u32>;
 
         // record the estimated a and b
-        let mut a_list: Vec<f32> = Vec::new();
-        let mut b_list: Vec<f32> = Vec::new();
+        let mut lambda_list: Vec<f32> = Vec::new();
+        let mut beta_list: Vec<f32> = Vec::new();
 
         // record hazard ratios for each v
         let mut hazard_ratio_list: Vec<Vec<f32>> = Vec::new();
@@ -630,18 +550,18 @@ impl ErrorAnalyzer {
             // estimate the parameters of the beta distribution
             //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
 
-            let (a, b) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
-            a_list.push(a);
-            b_list.push(b);
+            let (lambda, beta) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
+            lambda_list.push(lambda);
+            beta_list.push(beta);
         }
 
-        a_list.sort_by(f32::total_cmp);
-        let lower_a = a_list[(self.args.num_experiments as f32 * 0.05) as usize];
-        let upper_a = a_list[(self.args.num_experiments as f32 * 0.95) as usize];
+        lambda_list.sort_by(f32::total_cmp);
+        let lower_lambda = lambda_list[(self.args.num_experiments as f32 * 0.05) as usize];
+        let upper_lambda = lambda_list[(self.args.num_experiments as f32 * 0.95) as usize];
 
-        b_list.sort_by(f32::total_cmp);
-        let lower_b = b_list[(self.args.num_experiments as f32 * 0.05) as usize];
-        let upper_b = b_list[(self.args.num_experiments as f32 * 0.95) as usize];
+        beta_list.sort_by(f32::total_cmp);
+        let lower_beta = beta_list[(self.args.num_experiments as f32 * 0.05) as usize];
+        let upper_beta = beta_list[(self.args.num_experiments as f32 * 0.95) as usize];
 
         let mut hazard_ratio_range_list: Vec<((f32, f32))> = Vec::new();
         for v in 0..hazard_ratio_list.len() {
@@ -651,7 +571,7 @@ impl ErrorAnalyzer {
             hazard_ratio_range_list.push((h_lower, h_upper));
         }
 
-        ((lower_a, upper_a), (lower_b, upper_b), hazard_ratio_range_list)
+        ((lower_lambda, upper_lambda), (lower_beta, upper_beta), hazard_ratio_range_list)
         /* 
         let mut mean = alpha_list.iter().zip(beta_list.iter())
             .map(|(&a, &b)| a / (a + b))
@@ -717,9 +637,9 @@ impl ErrorAnalyzer {
         (mean, std, alpha, beta)
         */
 
-        let (a, b) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
+        let (lambda, beta) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
         //println!("Weibull parameters: alpha = {}, beta = {}", a, b);
-        (a, b, hazard_ratios, x_sum, y_sum)
+        (lambda, beta, hazard_ratios, x_sum, y_sum)
 
         
     }
@@ -743,14 +663,10 @@ impl ErrorAnalyzer {
         (median_coverage, (coverage_ci_lower, coverage_ci_upper))
     }
 
-    pub fn estimate_true_coverage(&self, estimated_a: f32, estimated_b: f32, key_coverage: (f32, (f32, f32))) -> (f32, (f32, f32)) {
+    pub fn estimate_true_coverage(&self, estimated_lambda: f32, estimated_beta: f32, key_coverage: (f32, (f32, f32))) -> (f32, (f32, f32)) {
         // estimate survival rate at k
-        let mut survival_rate: f32 = 1.0;
-        for i in 1..=self.args.k {
-            survival_rate *= 1.0 - estimated_a * ((i as f32).powf(estimated_b));
-        }
-
-        if survival_rate <= 0.0 {
+        let mut survival_rate: f32 = (- estimated_lambda * ((self.args.k as f32).powf(estimated_beta))).exp();
+        if survival_rate <= 0.0 || survival_rate > 1.0 {
             return (0., (0., 0.));
         }
         let mut estimated_coverage = key_coverage.0 / survival_rate;
@@ -779,8 +695,8 @@ impl ErrorAnalyzer {
         let error_rates = self.estimate_error_rate(stats, &indices);
 
         // estimate hazard ratio parameters
-        let (a, b, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
-        let (a_ci, b_ci, hazard_ratio_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
+        let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
+        let (lambda_ci, beta_ci, hazard_ratio_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
 
         if let Some(hazard_ratio_output) = &self.args.hazard_ratio {
             use std::fs::File;
@@ -804,11 +720,11 @@ impl ErrorAnalyzer {
 
         // estimate key coverage
         let key_coverage = self.key_coverage(stats, &indices);
-        let estimated_coverage = self.estimate_true_coverage(a, b, key_coverage);
+        let estimated_coverage = self.estimate_true_coverage(lambda, beta, key_coverage);
 
         ErrorSpectrum {
-            estimated_a: (a, a_ci),
-            estimated_b: (b, b_ci),
+            estimated_lambda: (lambda, lambda_ci),
+            estimated_beta: (beta, beta_ci),
 
             key_coverage: key_coverage,
             estimated_coverage: estimated_coverage,
@@ -831,8 +747,8 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     }
 
     // hazard ratio parameters a and b
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_a.0, (spectrum.estimated_a.1).0, (spectrum.estimated_a.1).1));
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_b.0, (spectrum.estimated_b.1).0, (spectrum.estimated_b.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_lambda.0, (spectrum.estimated_lambda.1).0, (spectrum.estimated_lambda.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_beta.0, (spectrum.estimated_beta.1).0, (spectrum.estimated_beta.1).1));
 
     // key coverage and estimated true coverage
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
@@ -842,8 +758,8 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     for op in if bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
         for prev_base in 0..4 {
             for next_base in 0..4 {
-                let rate = spectrum.snp_rate.get(&(*op, prev_base, next_base)).unwrap_or(&0.0);
-                result.push_str(&format!("{:.6},", rate));
+                let count = spectrum.snp_rate.get(&(*op, prev_base, next_base)).unwrap_or(&0);
+                result.push_str(&format!("{},", count));
             }
         }
     }
@@ -858,8 +774,8 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
 pub fn header_str(bidirectional: bool) -> String {
     let mut result = String::new();
 
-    result.push_str("a,a_5-95th_percentile,");
-    result.push_str("b,b_5-95th_percentile,");
+    result.push_str("lambda,lambda_5-95th_percentile,");
+    result.push_str("beta,beta_5-95th_percentile,");
 
     result.push_str("key_median_coverage,key_coverage_5-95th_percentile,");
     result.push_str("true_median_coverage,true_coverage_5-95th_percentile,");
