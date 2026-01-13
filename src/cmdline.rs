@@ -106,6 +106,9 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
 
+    #[clap(long, default_value_t = String::from("weibull"), hidden = true, help = "One of 'constant', 'weibull'.")]
+    pub hazard_model: String,
+
     #[clap(long, help_heading = "OUTPUT", hidden = true, help = "Output the estimated hazard ratio and their confidence intervals.")]
     pub hazard_ratio: Option<String>,
 }

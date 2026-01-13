@@ -6,14 +6,10 @@ use std::collections::HashMap;
 use crate::types::*;
 use crate::constants::*;
 use crate::cmdline::AnalyzeArgs;
+use crate::huber::*;
 
-use scirs2_optimize::least_squares::{least_squares, Method};
-use scirs2_stats::regression::{linear_regression, ridge_regression, lasso_regression};
-use scirs2_core::ndarray::{array, Array1};
 use log::info;
 use rand::Rng;
-use argmin::core::{CostFunction, Error, Executor};
-use argmin::solver::neldermead::NelderMead;
 
 
 pub struct ErrorSpectrum {
@@ -186,6 +182,12 @@ impl ErrorAnalyzer {
         (k, b)
     }
 
+    fn linear_fit_huber_f32(x: &Vec<f32>, y: &Vec<f32>) -> (f32, f32) {
+        let (slope, intercept) = huber_ridge_fit_1d(x, y, 0.1, 0.5, 100, 1e-6);
+        
+        (slope, intercept)
+    }
+
     /**
      * Calculate the mean of the ratios y/x
      */
@@ -269,6 +271,7 @@ impl ErrorAnalyzer {
     Util functions for estimating the parameters of beta distribution
     ========================
     */
+    /*
     fn residual_hazard_ratio_beta_distribution(params: &[f64], data: &[f64]) -> Array1<f64> {
         let n = data.len() / 2;
         let x = &data[0..n];
@@ -335,6 +338,7 @@ impl ErrorAnalyzer {
 
         (result.x[0] as f32, result.x[1] as f32)
     }
+    */
 
     /*
     ========================
@@ -375,13 +379,33 @@ impl ErrorAnalyzer {
                 (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
             .collect::<Vec<f32>>();
         //let (b, log_a) = Self::linear_fit_f32(&x, &y);
-        let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
+        //let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
+        let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
         
         
         let beta = slope + 1.;
         let lambda = intercept.exp() / beta;
 
         (lambda, beta)
+    }
+
+    fn fit_hazard_ratio_constant(&self, hazard_ratios: &Vec<f32>) -> f32 {
+        let n = hazard_ratios.len();
+        if n == 0 {
+            return 0.;
+        }
+        let mean = hazard_ratios.iter().sum::<f32>() / n as f32;
+        mean
+    }
+
+    fn fit_hazard_ratio(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
+        match self.args.hazard_model.as_str() {
+            "weibull" => self.fit_hazard_ratio_weibull_distribution_cloglog(hazard_ratios),
+            "constant" => (self.fit_hazard_ratio_constant(hazard_ratios), 1.0),
+            _ => {
+                panic!("Unknown hazard model: {}. Supported models are: weibull, constant.", self.args.hazard_model);
+            }
+        }
     }
 
 
@@ -549,8 +573,7 @@ impl ErrorAnalyzer {
             }
             // estimate the parameters of the beta distribution
             //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
-
-            let (lambda, beta) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
+            let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             lambda_list.push(lambda);
             beta_list.push(beta);
         }
@@ -637,7 +660,7 @@ impl ErrorAnalyzer {
         (mean, std, alpha, beta)
         */
 
-        let (lambda, beta) = self.fit_hazard_ratio_weibull_distribution_cloglog(&hazard_ratios);
+        let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
         //println!("Weibull parameters: alpha = {}, beta = {}", a, b);
         (lambda, beta, hazard_ratios, x_sum, y_sum)
 

@@ -13,14 +13,22 @@ def fit_weibull_distribution_linear(v_values, p00_stats):
     x = np.log(np.array(v_values))
 
     # Use ridge regression to fit the line
-    from sklearn.linear_model import Lasso, Ridge, RANSACRegressor
+    from sklearn.linear_model import Lasso, Ridge, RANSACRegressor, HuberRegressor
 
-    model = Ridge(alpha=1)
-    #model = Lasso(alpha=0.1)
+    #model = Ridge(alpha=1)
+    #model = Lasso(alpha=0.001)
+    model = HuberRegressor(alpha=10)
     x_reshaped = x.reshape(-1, 1)
     model.fit(x_reshaped, y)
-    b = model.coef_[0]
-    a = model.intercept_
+    #b = model.coef_[0]
+    #a = model.intercept_
+    #print(model.estimator_.coef_, model.estimator_.intercept_)
+
+    beta = model.coef_[0] + 1
+    lam = np.exp(model.intercept_) / beta
+
+    #print(f"Fitted Weibull distribution parameters: lambda={lam}, k={beta}")
+    print("({}, {}),".format(lam, beta))
 
     # Calculate the p-value of the coefficient
 
@@ -35,17 +43,18 @@ def fit_weibull_distribution_linear(v_values, p00_stats):
     standard_error_b = np.sqrt(variance / np.sum((x - x_mean)**2))
 
     # t-statistic for the coefficient
-    t_stat_b = b / standard_error_b
+    #t_stat_b = b / standard_error_b
 
     # Two-tailed p-value
-    p_value_b = 2 * (1 - stats.t.cdf(np.abs(t_stat_b), df=degrees_of_freedom))
-    print(f"p-value for coefficient b: {p_value_b}")
+    #p_value_b = 2 * (1 - stats.t.cdf(np.abs(t_stat_b), df=degrees_of_freedom))
+    #print(f"p-value for coefficient b: {p_value_b}")
 
     # a = log(-log(q))
-    q = np.exp(a)
-    print(f"Estimated q from a: {q}")
+    #q = np.exp(a)
+    #print(f"Estimated q from a: {q}")
 
     # Plot the fit
+    
     import matplotlib.pyplot as plt
     plt.scatter(x, y, label="Data")
     plt.plot(x, model.predict(x_reshaped), color='red', label="Fit")
@@ -54,8 +63,8 @@ def fit_weibull_distribution_linear(v_values, p00_stats):
     plt.legend()
     plt.show()
 
-    print(f"Fitted Weibull distribution parameters: a={np.exp(a)}, b={b}")
-    return np.exp(a), b  # a, b
+    #print(f"Fitted Weibull distribution parameters: a={np.exp(a)}, b={b}")
+    return lam, beta  # a, b
 
 def fit_weibull_distribution_curve_fit(self, v_values, p00_stats):
     from scipy.optimize import curve_fit
@@ -133,23 +142,38 @@ if __name__ == "__main__":
     import pandas as pd
     from scipy import stats
 
-    hazard_ratio_df = pd.read_csv("hazard_ratio.csv")
+    #hazard_ratio_df = pd.read_csv("hazard_ratio.csv")
     #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/coverage_dependence_homogeneous_l5/Ecoli_K12_MG1655_depth_100_id_90_exp_1_hazard_ratio.csv")
     #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/coverage_dependence_homogeneous_l5/Ecoli_K12_MG1655_depth_100_id_90_exp_1_hazard_ratio.csv")
 
     #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/human/HG002_bi_kvmer_hazard_ratio.csv")
-    #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/zymo/ERR3152366_bi_kvmer_hazard_ratio.csv")
-    #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/zymo/SRR7498042_bi_kvmer_hazard_ratio.csv")
+
+    file_list = [
+        "../kv-mer-test/output/zymo/ERR3152366_bi_kvmer_hazard_ratio.csv",
+        "../kv-mer-test/output/zymo/SRR13128014_bi_kvmer_hazard_ratio.csv",
+        "../kv-mer-test/output/zymo/ERR2935851_bi_kvmer_hazard_ratio.csv",
+        "../kv-mer-test/output/zymo/SRR7498042_bi_kvmer_hazard_ratio.csv"
+    ]
+
+    file_list = [
+        "../kv-mer-test/output/human/HG002_R941_bi_kvmer_hazard_ratio.csv",
+    ]
+    #hazard_ratio_df = pd.read_csv("../kv-mer-test/output/human/HG002_hifi_bi_kvmer_hazard_ratio.csv")
     #hazard_ratio_df = pd.read_csv("/home/ubuntu/kv-mer-test/output/coverage_dependence/Ecoli_K12_MG1655_depth_10_id_100_exp_1_ref_hazard_ratio.csv")
+    #hazard_ratio_df = pd.read_csv("/home/ubuntu/kv-mer-test/output/coverage_dependence/Ecoli_K12_MG1655_depth_10_id_90_exp_4_hazard_ratio.csv")
 
-    v_values = hazard_ratio_df["t"].values
-    p00_stats = hazard_ratio_df["hazard_ratio"].values
-    num_candidates = hazard_ratio_df["num_candidates"].values
-    num_survival = hazard_ratio_df["num_survival"].values
-    num_failure = num_candidates - num_survival
+    for file in file_list:
+        #print(f"Processing file: {file}")
+        hazard_ratio_df = pd.read_csv(file)
+        v_values = hazard_ratio_df["t"].values
+        p00_stats = hazard_ratio_df["hazard_ratio"].values
+        print(p00_stats)
+        num_candidates = hazard_ratio_df["num_candidates"].values
+        num_survival = hazard_ratio_df["num_survival"].values
+        num_failure = num_candidates - num_survival
 
-    #v_values = v_values[1:]
-    #p00_stats = p00_stats[1:]
+        #v_values = v_values[1:]
+        #p00_stats = p00_stats[1:]
 
-    fit_weibull_distribution_linear(v_values, p00_stats)
-    fit_weibull_distribution_mle(v_values, num_candidates, num_failure)
+        fit_weibull_distribution_linear(v_values, p00_stats)
+        #fit_weibull_distribution_mle(v_values, num_candidates, num_failure)
