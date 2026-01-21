@@ -1,15 +1,11 @@
 use log::{info, warn, error};
-use needletail::{Sequence, kmer, parse_fastx_file};
+use needletail::parse_fastx_file;
 use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
-use crossbeam_channel::{bounded, Receiver, Sender};
 
-use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::{prelude::*, BufReader};
-use std::path::Path;
-use std::fmt;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -223,7 +219,7 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, bidirectional: bool, value_map: &HashMap<u64, u32>) -> u32 {        
+    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, _bidirectional: bool, value_map: &HashMap<u64, u32>) -> u32 {        
         let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let mut num_consensus: u32 = 0;
@@ -247,7 +243,7 @@ impl KVmerSet {
         let mut error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>> = Vec::new();
         // A vector of size value_size, recording the number of neighbors up to each position
         let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
-        for v in 1..=self.value_size {
+        for _v in 1..=self.value_size {
             consensus_up_to_v_counts.push(Vec::new());
         }
         // Total number of times the key appears
@@ -335,6 +331,7 @@ impl KVmerSet {
         }
     }
 
+    #[allow(unused)]
     pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
         // record the keys and consensus values for output
         let mut keys: Vec<u64> = Vec::new();
@@ -346,7 +343,7 @@ impl KVmerSet {
         let mut error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>> = Vec::new();
         // A vector of size value_size, recording the number of consensus up to each position
         let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
-        for v in 1..=self.value_size {
+        for _v in 1..=self.value_size {
             consensus_up_to_v_counts.push(Vec::new());
         }
         // Total number of times the key appears
@@ -570,7 +567,7 @@ impl VmerSet {
 
     pub fn add_to_keys(&mut self, seed_vec: &[u64]) {
         for &kmer in seed_vec {
-            let entry = self.kvmer_set.key_value_map.entry(kmer).or_insert_with(HashMap::new);
+            let _entry = self.kvmer_set.key_value_map.entry(kmer).or_insert_with(HashMap::new);
         }
     }
 
@@ -653,7 +650,7 @@ impl VmerSet {
 
     }
 
-    pub fn _get_relevant_values(&self, threshold: u32) -> HashSet<u64> {
+    pub fn _get_relevant_values(&self, _threshold: u32) -> HashSet<u64> {
         let mut relevant_values: HashSet<u64> = HashSet::new();
 
         // for all the keys in kvmer_set with counts above threshold, get their neighbors

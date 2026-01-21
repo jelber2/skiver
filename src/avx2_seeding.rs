@@ -32,7 +32,7 @@ use crate::types::*;
  */
 #[inline]
 #[target_feature(enable = "avx2")]
-pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: Option<i64>) -> __m256i { unsafe {
+pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: Option<i64>) -> __m256i {
     // mask the kmer so that only the masked bits are used in the hash
     let mut key = kmer;
     if let Some(mask) = mask {
@@ -62,14 +62,14 @@ pub unsafe fn mm_hash256_masked(kmer: __m256i, mask: Option<i64>) -> __m256i { u
     key = _mm256_add_epi64(key, s6);
 
     return key;
-}}
+}
 
 /**
  * Shift each 64-bit lane in a __m256i by 2*k - 2 bits to the left.
  * This is used to update the reverse kmer in the rolling hash.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn _shift_mm256_left_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
+pub unsafe fn _shift_mm256_left_by_k(kmer: __m256i, k: usize) -> __m256i {
     // shift left by 2*k - 2
     let shifted = match k {
         1 => { _mm256_slli_epi64(kmer, 0) }
@@ -110,10 +110,10 @@ pub unsafe fn _shift_mm256_left_by_k(kmer: __m256i, k: usize) -> __m256i { unsaf
         _ => { panic!() }
     };
     return shifted;
-}}
+}
 
 #[target_feature(enable = "avx2")]
-pub unsafe fn _shift_mm256_right_by_k(kmer: __m256i, k: usize) -> __m256i { unsafe {
+pub unsafe fn _shift_mm256_right_by_k(kmer: __m256i, k: usize) -> __m256i {
     // shift right by 2*k - 2
     let shifted = match k {
         1 => { _mm256_srli_epi64(kmer, 0) }
@@ -151,7 +151,7 @@ pub unsafe fn _shift_mm256_right_by_k(kmer: __m256i, k: usize) -> __m256i { unsa
         _ => { panic!() }
     };
     return shifted;
-}}
+}
 
 
 /**

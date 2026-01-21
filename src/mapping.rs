@@ -4,7 +4,6 @@ use needletail::parse_fastx_file;
 use serde::{Serialize, Deserialize};
 
 use std::collections::HashMap;
-use std::io::Write;
 
 use crate::{seeding::*};
 
