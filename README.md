@@ -14,7 +14,9 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/latest/skiver
+wget https://github.com/GZHoffie/skiver/releases/download/v0.0.1/skiver
+chmod +x ./skiver
+./skiver
 ```
 
 ### Build from source
