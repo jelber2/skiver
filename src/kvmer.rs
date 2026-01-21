@@ -1,7 +1,7 @@
 use log::{info, warn, error};
 use needletail::{Sequence, kmer, parse_fastx_file};
 use serde::{Serialize, Deserialize};
-use rayon::prelude::*;
+//use rayon::prelude::*;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
 use std::fs;

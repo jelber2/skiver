@@ -42,8 +42,8 @@ pub struct SketchArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
@@ -97,8 +97,8 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
     pub ignore_last_hazard_ratios: usize,
 
-    #[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
@@ -142,8 +142,8 @@ pub struct MapArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,

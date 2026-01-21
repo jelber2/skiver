@@ -10,9 +10,10 @@ use glob::glob;
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
-    rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
+    // [TODO] Multithreaded version is under development.
+    //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
 
-    info!("Using {} threads for analysis.", args.threads);
+    //info!("Using {} threads for analysis.", args.threads);
 
     let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
     

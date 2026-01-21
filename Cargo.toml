@@ -1,6 +1,6 @@
 [package]
-name = "kvmer"
-version = "0.1.0"
+name = "skiver"
+version = "0.0.1"
 edition = "2024"
 
 [dependencies]
@@ -11,6 +11,5 @@ glob = "0.3.2"
 clap = { version = "3", features = ["derive"] }
 bincode = "1"
 serde = { version = "1", features = ["derive"] }
-rayon = "1.11.0"
 crossbeam-channel = "0.5.15"
 rand = "0.9.2"
