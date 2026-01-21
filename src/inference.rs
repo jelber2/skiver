@@ -486,7 +486,7 @@ impl ErrorAnalyzer {
         
         // calculate the mean for each error type using the full error_counts vector
         let mut estimates: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
-        for op in if self.args.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+        for op in if !self.args.forward_only { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
             for prev_base in 0..4 {
                 for next_base in 0..4 {
                     let count = error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
@@ -698,7 +698,7 @@ impl ErrorAnalyzer {
         let mut estimated_coverage_ci_lower = (key_coverage.1).0 / survival_rate;
         let mut estimated_coverage_ci_upper = (key_coverage.1).1 / survival_rate;
 
-        if !self.args.bidirectional {
+        if self.args.forward_only {
             estimated_coverage *= 2.0;
             estimated_coverage_ci_lower *= 2.0;
             estimated_coverage_ci_upper *= 2.0;
@@ -723,7 +723,7 @@ impl ErrorAnalyzer {
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (lambda_ci, beta_ci, hazard_ratio_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
 
-        if let Some(hazard_ratio_output) = &self.args.hazard_ratio {
+        if let Some(hazard_ratio_output) = &self.args.hazard_rate {
             use std::fs::File;
             use std::io::{BufWriter, Write};
 
@@ -755,7 +755,7 @@ impl ErrorAnalyzer {
             estimated_coverage: estimated_coverage,
 
             snp_rate: error_rates,
-            bidirectional: self.args.bidirectional,
+            bidirectional: !self.args.forward_only,
         }
     }
 }
