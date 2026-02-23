@@ -474,14 +474,8 @@ impl KVmerSet {
         write!(writer, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         // errors
         if show_error_types {
-            if self.bidirectional {
-                for op in ALL_OPERATIONS_CANONICAL {
-                    write!(writer, ",{:?}", op).unwrap();
-                }
-            } else {
-                for op in ALL_OPERATIONS {
-                    write!(writer, ",{:?}", op).unwrap();
-                }
+            for op in ALL_OPERATIONS {
+                write!(writer, ",{:?}", op).unwrap();
             }
         }
         // for p vs. v regression
@@ -505,7 +499,7 @@ impl KVmerSet {
                 stats.total_counts[i],
             ).unwrap();
             if show_error_types {
-                for op in if self.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+                for op in ALL_OPERATIONS.iter() {
                     let mut total_count: u32 = 0;
                     for prev_base in 0..5 {
                         for next_base in 0..5 {
@@ -601,12 +595,16 @@ impl VmerSet {
                 let current_base = (value >> shift) & 0b11;
                 if b != current_base {
                     let neighbor = (value & !(0b11 << shift)) | (b << shift);
+<<<<<<< master
                     if self.kvmer_set.bidirectional {
                         neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
                     } else {
                         neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
                     }
 
+=======
+                    neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
+>>>>>>> master
                 }
             }
 
@@ -619,22 +617,14 @@ impl VmerSet {
                 let left_part = (value >> (shift + 2)) << ((shift + 2));
                 let right_part = value & ((1 << (shift + 2)) - 1);
                 let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
-                if self.kvmer_set.bidirectional {
-                    neighbors.entry(neighbor_insert)
-                    .and_modify(|op|
-                        if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_INSERTION_CANONICAL[b as usize].unwrap());
-                } else {
-                    neighbors.entry(neighbor_insert)
+                neighbors.entry(neighbor_insert)
                     .and_modify(|op|
                         if *op != BASES_TO_INSERTION[b as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
                     .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
+<<<<<<< master
                 }
 
 
@@ -653,12 +643,21 @@ impl VmerSet {
                 } else {
                     neighbors.entry(neighbor_delete)
                     .and_modify(|op|
+=======
+                
+                
+                
+                let right_part = value & ((1 << shift) - 1);
+                let neighbor_delete = left_part | (right_part << 2) | b;
+                let original_base = (value >> shift) & 0b11;
+                neighbors.entry(neighbor_delete)
+                    .and_modify(|op| 
+>>>>>>> master
                         if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
                     )
                     .or_insert(BASES_TO_DELETION[original_base as usize].unwrap());
-                }
             }
         }
 
