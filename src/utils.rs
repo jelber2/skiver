@@ -32,17 +32,7 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
 
             if b != current_base {
                 let neighbor = (value & !(0b11 << shift)) | (b << shift);
-                if bidirectional {
-                    if current_base <= 1 {
-                        // insert the reverse complement substitution
-                        neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize]));
-                    } else {
-                        neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap(), previous_base, next_base));
-                    }
-                } else {
-                    neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), previous_base, next_base));
-                }
-                
+                neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), previous_base, next_base));
             }
         }
 
@@ -55,20 +45,7 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
             let left_part = (value >> (shift + 2)) << ((shift + 2));
             let right_part = value & ((1 << (shift + 2)) - 1);
             let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
-            if bidirectional {
-                neighbors.entry(neighbor_insert)
-                .and_modify(|(op, _prev, _next)|
-                    if *op != BASES_TO_INSERTION_CANONICAL[b as usize].unwrap() {
-                        *op = EditOperation::AMBIGUOUS
-                    }
-                )
-                .or_insert(if b <= 1 {
-                    (BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize])
-                } else {
-                    (BASES_TO_INSERTION_CANONICAL[b as usize].unwrap(), previous_base, next_base)
-                });
-            } else {
-                neighbors.entry(neighbor_insert)
+            neighbors.entry(neighbor_insert)
                 .and_modify(|(op, _prev, _next)| {
                     if *op != BASES_TO_INSERTION[b as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
@@ -77,27 +54,13 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
                 .or_insert(
                     (BASES_TO_INSERTION[b as usize].unwrap(), previous_base, next_base)
                 );
-            }
             
             
             
             let right_part = value & ((1 << shift) - 1);
             let neighbor_delete = left_part | (right_part << 2) | b;
             let original_base = (value >> shift) & 0b11;
-            if bidirectional {
-                neighbors.entry(neighbor_delete)
-                .and_modify(|(op, _prev, _next)| 
-                    if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
-                        *op = EditOperation::AMBIGUOUS
-                    }
-                )
-                .or_insert(if original_base <= 1 {
-                    (BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), SEQ_TO_COMPLEMENT_BIN[next_base as usize], SEQ_TO_COMPLEMENT_BIN[previous_base as usize])
-                } else {
-                    (BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap(), previous_base, next_base)
-                });
-            } else {
-                neighbors.entry(neighbor_delete)
+            neighbors.entry(neighbor_delete)
                 .and_modify(|(op, _prev, _next)| 
                     if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                         *op = EditOperation::AMBIGUOUS
@@ -106,7 +69,6 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
                 .or_insert(
                     (BASES_TO_DELETION[original_base as usize].unwrap(), previous_base, next_base)
                 );
-            }
         }
     }
 

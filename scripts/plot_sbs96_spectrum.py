@@ -54,7 +54,7 @@ def plot_sbs96_spectrum(data_file, output_file):
 
         for i, mut in enumerate(mutations):
             values = get_values_for_mut(mut)
-            values = [v/total_freq for v in values]
+            values = [v for v in values]
             x = [i * group_width + j * bar_width for j in range(16)]
             ax.bar(x, values, width=bar_width, color=plt.cm.tab10(i), label=mut)
 
@@ -86,16 +86,17 @@ def plot_sbs96_spectrum(data_file, output_file):
         # Top bars
         for i, mut in enumerate(top_muts):
             values = get_values_for_mut(mut)
-            values = [v/total_freq for v in values]
+            values = [v for v in values]
             x = [i * group_width + j * bar_width for j in range(16)]
             ax_top.bar(x, values, width=bar_width, color=plt.cm.tab10(i))
+        #print(values)
 
         ax_top.set_ylim(0, max_freq * 1.1)
 
         # Bottom bars
         for i, mut in enumerate(bot_muts):
             values = get_values_for_mut(mut)
-            values = [v/total_freq for v in values]
+            values = [v for v in values]
             x = [i * group_width + j * bar_width for j in range(16)]
             ax_bot.bar(x, [-v for v in values], width=bar_width, color=plt.cm.tab10(i))
 
@@ -142,6 +143,8 @@ def plot_sbs96_spectrum(data_file, output_file):
 
 if __name__ == "__main__":
     data_file = 'sarscov.csv'  # Input CSV file with SBS96 data
+    #data_file = 'mers.csv'
+    #data_file = 'output.csv'
     #data_file = 'sbs96_spectrum.csv'  # Input CSV file with SBS96 data
     output_file = 'sbs96_spectrum.png'  # Output plot file
     plot_sbs96_spectrum(data_file, output_file)

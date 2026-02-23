@@ -484,7 +484,7 @@ impl ErrorAnalyzer {
         
         // calculate the mean for each error type using the full error_counts vector
         let mut estimates: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
-        for op in if self.args.bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+        for op in ALL_OPERATIONS.iter() {
             for prev_base in 0..4 {
                 for next_base in 0..4 {
                     let count = error_counts.get(&(*op, prev_base, next_base)).unwrap_or(&0);
@@ -778,7 +778,7 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_coverage.0, (spectrum.estimated_coverage.1).0, (spectrum.estimated_coverage.1).1));
 
     // SNP rates
-    for op in if bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+    for op in ALL_OPERATIONS.iter() {
         for prev_base in 0..4 {
             for next_base in 0..4 {
                 let count = spectrum.snp_rate.get(&(*op, prev_base, next_base)).unwrap_or(&0);
@@ -802,7 +802,7 @@ pub fn header_str(bidirectional: bool) -> String {
 
     result.push_str("key_median_coverage,key_coverage_5-95th_percentile,");
     result.push_str("true_median_coverage,true_coverage_5-95th_percentile,");
-    for op in if bidirectional { ALL_OPERATIONS_CANONICAL.iter() } else { ALL_OPERATIONS.iter() } {
+    for op in ALL_OPERATIONS.iter() {
         for prev_base in 0..4 {
             for next_base in 0..4 {
                 result.push_str(&sbs96_str(&(*op, prev_base, next_base)));
