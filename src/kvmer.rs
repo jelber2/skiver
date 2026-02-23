@@ -811,4 +811,4 @@ impl VmerSet {
         self.kvmer_set.get_stats(threshold)
     }
 
-}7
+}
