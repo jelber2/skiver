@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[clap(author, version, about = "kv-mer", arg_required_else_help = true, disable_help_subcommand = true)]
+#[clap(author, version, about = "Skiver: Alignment-free estimation of sequencing error rates and spectra using (k,v)-mer sketches", arg_required_else_help = true, disable_help_subcommand = true)]
 pub struct Cli {
     #[clap(subcommand,)]
     pub mode: Mode,
@@ -42,14 +42,14 @@ pub struct SketchArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
 
-    #[clap(long = "bidirectional", help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads. Default: use only the forward strand (false).")]
-    pub bidirectional: bool,
+    #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand of the reads only. Default: use both forward and reverse strands of the reads.")]
+    pub forward_only: bool,
 }
 
 
@@ -70,8 +70,8 @@ pub struct AnalyzeArgs {
     #[clap(short = 'l', long = "lower-bound", default_value_t = 5, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
     pub lower_bound: u32,
 
-    #[clap(long = "bidirectional", help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads. Default: use only the forward strand (false).")]
-    pub bidirectional: bool,
+    #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand of the reads only. Default: use both forward and reverse strands of the reads.")]
+    pub forward_only: bool,
 
     #[clap(long = "use-all", help_heading = "ALGORITHM", help = "Not excluding the outliers.")]
     pub use_all: bool,
@@ -97,8 +97,8 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
     pub ignore_last_hazard_ratios: usize,
 
-    #[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: Option<String>,
@@ -109,8 +109,8 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("weibull"), hidden = true, help = "One of 'constant', 'weibull'.")]
     pub hazard_model: String,
 
-    #[clap(long, help_heading = "OUTPUT", hidden = true, help = "Output the estimated hazard ratio and their confidence intervals.")]
-    pub hazard_ratio: Option<String>,
+    #[clap(long, help_heading = "OUTPUT", help = "Output the estimated hazard ratio and their confidence intervals as a csv file.")]
+    pub hazard_rate: Option<String>,
 }
 
 #[derive(Args, Default)]
@@ -130,8 +130,8 @@ pub struct MapArgs {
     #[clap(short, default_value_t = 5, help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling.")]
     pub lower_bound: u32,
 
-    #[clap(short, help_heading = "ALGORITHM", help = "Use both forward and reverse strands of the reads.")]
-    pub bidirectional: bool,
+    #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand of the reads only. Default: use both forward and reverse strands of the reads.")]
+    pub forward_only: bool,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: String,
@@ -142,8 +142,8 @@ pub struct MapArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    pub threads: usize,
+    //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
+    //pub threads: usize,
 
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,

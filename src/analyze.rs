@@ -10,11 +10,12 @@ use glob::glob;
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
-    rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
+    // [TODO] Multithreaded version is under development.
+    //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
 
-    info!("Using {} threads for analysis.", args.threads);
+    //info!("Using {} threads for analysis.", args.threads);
 
-    let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
+    let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
     
     // Read query files
     info!("Processing query files...");
@@ -59,8 +60,8 @@ pub fn analyze(args: AnalyzeArgs) {
 
     // output to stdout a csv file
     // [TODO] allow output a separate line per file
-    println!("{}", header_str(args.bidirectional));
-    let spectrum_str = spectrum_to_str(&spectrum, args.bidirectional);
+    println!("{}", header_str(!args.forward_only));
+    let spectrum_str = spectrum_to_str(&spectrum, !args.forward_only);
     println!("{}", spectrum_str);
 
     

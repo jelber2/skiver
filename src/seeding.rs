@@ -108,7 +108,7 @@ pub fn fmh_seeds_masked(
     // Initialize keys
     for i in 0..k - 1 {
         let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
-        let nuc_r = 3 - nuc_f;
+        let _nuc_r = 3 - nuc_f;
         rolling_key_f <<= 2;
         rolling_key_f |= nuc_f;
     }
@@ -116,7 +116,7 @@ pub fn fmh_seeds_masked(
     // Initialize values
     for i in 0..v {
         let nuc_f = BYTE_TO_SEQ[string[i + k - 1] as usize] as u64;
-        let nuc_r = 3 - nuc_f;
+        let _nuc_r = 3 - nuc_f;
         rolling_value_f <<= 2;
         rolling_value_f |= nuc_f;
     }
@@ -164,14 +164,14 @@ pub fn fmh_seeds_masked(
             //let nuc_key_r = 3 - BYTE_TO_SEQ[string[i + k + v - 1] as usize] as u64;
             let nuc_r = 3 - nuc_f;
 
-            let last_base_k = (rolling_key_r & 0b11);
+            let last_base_k = rolling_key_r & 0b11;
 
             rolling_value_r >>= 2;
-            rolling_value_r |= (last_base_k << (2 * (v - 1)));
+            rolling_value_r |= last_base_k << (2 * (v - 1));
             rolling_value_r &= value_mask;
 
             rolling_key_r >>= 2;
-            rolling_key_r |= (nuc_r << (2 * (k - 1)));
+            rolling_key_r |= nuc_r << (2 * (k - 1));
             rolling_key_r &= key_mask;
             
 

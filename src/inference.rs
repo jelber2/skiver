@@ -1,5 +1,3 @@
-use std::hash::Hash;
-use std::path::Display;
 use std::collections::HashMap;
 
 
@@ -125,6 +123,7 @@ impl ErrorAnalyzer {
         (k, b)
     }
 
+    #[allow(dead_code)]
     fn linear_fit_f32(x: &Vec<f32>, y: &Vec<f32>) -> (f32, f32) {
         let n = x.len() as f32;
 
@@ -147,11 +146,12 @@ impl ErrorAnalyzer {
         (k, b)
     }
 
+    #[allow(dead_code)]
     fn ridge_fit_f32(x: &Vec<f32>, y: &Vec<f32>, lambda: f32) -> (f32, f32) {
         let n = x.len();
         // Means
-        let mut sum_x = x.iter().sum::<f32>();
-        let mut sum_y = y.iter().sum::<f32>();
+        let sum_x = x.iter().sum::<f32>();
+        let sum_y = y.iter().sum::<f32>();
 
         //println!("sum_x: {}, sum_y: {}", sum_x, sum_y);
 
@@ -250,15 +250,16 @@ impl ErrorAnalyzer {
     }
 
     fn random_subsample_with_replacement(x: &Vec<usize>, n: usize) -> Vec<usize> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         (0..n)
-            .map(|_| x[rng.gen_range(0..x.len())])
+            .map(|_| x[rng.random_range(0..x.len())])
             .collect()
     }
 
+    #[allow(dead_code)]
     fn random_subsample_without_replacement(x: &Vec<usize>, n: usize) -> Vec<usize> {
         use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut x_clone = x.clone();
         x_clone.shuffle(&mut rng);
         x_clone.truncate(n);
@@ -347,6 +348,7 @@ impl ErrorAnalyzer {
     */
 
     /// Assume hazard ratio follows Weibull distribution: hazard ratio = a * (i + k)^b
+    #[allow(dead_code)]
     fn fit_hazard_ratio_weibull_distribution_power_law(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
         // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
         let x = hazard_ratios.iter().enumerate().
@@ -539,7 +541,7 @@ impl ErrorAnalyzer {
     /**
      * Returns ((lower_a, upper_a), (lower_b, upper_b), hazard_ratio_list)
      */
-    pub fn estimate_hazard_ratio_confidence_interval(&self, stats: &KVmerStats, indices: &Vec<usize>) -> ((f32, f32), (f32, f32), Vec<((f32, f32))>) {
+    pub fn estimate_hazard_ratio_confidence_interval(&self, stats: &KVmerStats, indices: &Vec<usize>) -> ((f32, f32), (f32, f32), Vec<(f32, f32) >) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
 
@@ -549,7 +551,7 @@ impl ErrorAnalyzer {
 
         // record hazard ratios for each v
         let mut hazard_ratio_list: Vec<Vec<f32>> = Vec::new();
-        for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+        for _v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
             hazard_ratio_list.push(Vec::new());
         }
 
@@ -586,7 +588,7 @@ impl ErrorAnalyzer {
         let lower_beta = beta_list[(self.args.num_experiments as f32 * 0.05) as usize];
         let upper_beta = beta_list[(self.args.num_experiments as f32 * 0.95) as usize];
 
-        let mut hazard_ratio_range_list: Vec<((f32, f32))> = Vec::new();
+        let mut hazard_ratio_range_list: Vec<(f32, f32) > = Vec::new();
         for v in 0..hazard_ratio_list.len() {
             hazard_ratio_list[v].sort_by(f32::total_cmp);
             let h_lower = hazard_ratio_list[v][(self.args.num_experiments as f32 * 0.05) as usize];
@@ -688,7 +690,7 @@ impl ErrorAnalyzer {
 
     pub fn estimate_true_coverage(&self, estimated_lambda: f32, estimated_beta: f32, key_coverage: (f32, (f32, f32))) -> (f32, (f32, f32)) {
         // estimate survival rate at k
-        let mut survival_rate: f32 = (- estimated_lambda * ((self.args.k as f32).powf(estimated_beta))).exp();
+        let survival_rate: f32 = (- estimated_lambda * ((self.args.k as f32).powf(estimated_beta))).exp();
         if survival_rate <= 0.0 || survival_rate > 1.0 {
             return (0., (0., 0.));
         }
@@ -696,7 +698,7 @@ impl ErrorAnalyzer {
         let mut estimated_coverage_ci_lower = (key_coverage.1).0 / survival_rate;
         let mut estimated_coverage_ci_upper = (key_coverage.1).1 / survival_rate;
 
-        if !self.args.bidirectional {
+        if self.args.forward_only {
             estimated_coverage *= 2.0;
             estimated_coverage_ci_lower *= 2.0;
             estimated_coverage_ci_upper *= 2.0;
@@ -721,7 +723,7 @@ impl ErrorAnalyzer {
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (lambda_ci, beta_ci, hazard_ratio_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
 
-        if let Some(hazard_ratio_output) = &self.args.hazard_ratio {
+        if let Some(hazard_ratio_output) = &self.args.hazard_rate {
             use std::fs::File;
             use std::io::{BufWriter, Write};
 
@@ -753,7 +755,7 @@ impl ErrorAnalyzer {
             estimated_coverage: estimated_coverage,
 
             snp_rate: error_rates,
-            bidirectional: self.args.bidirectional,
+            bidirectional: !self.args.forward_only,
         }
     }
 }

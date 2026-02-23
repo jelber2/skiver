@@ -4,7 +4,6 @@ use needletail::parse_fastx_file;
 use serde::{Serialize, Deserialize};
 
 use std::collections::HashMap;
-use std::io::Write;
 
 use crate::{seeding::*};
 
@@ -19,7 +18,7 @@ pub fn map(args: crate::cmdline::MapArgs) {
     let mut total_kmers: u32 = 0;
     info!("Processing query files...");
     for file in &args.files {
-        let (matched, total) = kmer_set.query_file(file, args.c, args.lower_bound, args.sample_rate, args.bidirectional, args.print_verbose, args.trim_front, args.trim_back);
+        let (matched, total) = kmer_set.query_file(file, args.c, args.lower_bound, args.sample_rate, !args.forward_only, args.print_verbose, args.trim_front, args.trim_back);
 
         total_matched += matched;
         total_kmers += total;

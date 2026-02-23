@@ -4,15 +4,15 @@ use crate::kvmer::*;
 use simple_logger::SimpleLogger;
 use log::info;
 use crate::cmdline::SketchArgs;
-use rayon::prelude::*;
+//use rayon::prelude::*;
 
 
 pub fn sketch(args: SketchArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
-    rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
+    //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
     info!("Processing query files...");
     
-    let mut kvmer_set = KVmerSet::new(args.k, args.v, args.bidirectional);
+    let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
     for file in &args.files {
         kvmer_set.add_file_to_kvmer_set(file, args.c, args.trim_front, args.trim_back);
     }
