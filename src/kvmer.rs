@@ -160,6 +160,10 @@ impl KVmerSet {
         if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
             match bam::Reader::from_path(&seq_file_clone) {
                 Ok(mut reader) => {
+                    if !self.bidirectional {
+                        // [FIXME] Correct the coverage estimation when using forward strand only with BAM/SAM input files
+                        warn!("Using --forward-only with BAM/SAM input files may make the estimation of true coverage inaccurate.")
+                    }
                     for record_result in reader.records() {
                         match record_result {
                             Ok(record) => {
@@ -168,10 +172,6 @@ impl KVmerSet {
                                 let mut value_vec: Vec<u64> = Vec::new();
                                 self.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back);
                                 self.add_kv_vector(&key_vec, &value_vec);
-                                if !self.bidirectional {
-                                    // [FIXME] Correct the coverage estimation when using forward strand only with BAM/SAM input files
-                                    warn!("Using forward strand only with BAM/SAM input files may double the estimation of true coverage.")
-                                }
                             }
                             Err(e) => warn!("Error reading BAM/SAM record: {}", e),
                         }
