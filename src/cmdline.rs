@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
+use crate::assign_qualities::AssignQualitiesArgs;
+
 #[derive(Parser)]
 #[clap(author, version, about = "Skiver: Alignment-free estimation of sequencing error rates and spectra using (k,v)-mer sketches", arg_required_else_help = true, disable_help_subcommand = true)]
 pub struct Cli {
@@ -16,6 +18,10 @@ pub enum Mode {
     /// Analyze a given sequencing file.
     #[clap(display_order = 2)]
     Analyze(AnalyzeArgs),
+
+    /// Assign support-derived Phred-33 qualities using an existing Skiver sketch.
+    #[clap(display_order = 3)]
+    AssignQualities(AssignQualitiesArgs),
 
     /// For testing only: Try mapping the reads to reference genomes, and check how many k-mers are error-free.
     #[clap(display_order = 4)]
