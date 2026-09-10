@@ -5,14 +5,14 @@ use skiver::cmdline::*;
 use skiver::analyze;
 use skiver::sketch;
 use skiver::mapping;
-
+use skiver::assign_qualities;
 
 //Use this allocator when statically compiling
 //instead of the default
 //because the musl statically compiled binary
 //uses a bad default allocator which makes the
 //binary take 60% longer!!! Only affects
-//static compilation though. 
+//static compilation though.
 #[cfg(target_env = "musl")]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -28,6 +28,12 @@ fn main() {
     match cli.mode {
         Mode::Sketch(sketch_args) => sketch::sketch(sketch_args),
         Mode::Analyze(analyze_args) => analyze::analyze(analyze_args),
+        Mode::AssignQualities(assign_qualities_args) => {
+            if let Err(error) = assign_qualities::run(assign_qualities_args) {
+                eprintln!("assign-qualities: {error:#}");
+                std::process::exit(1);
+            }
+        }
         Mode::Map(map_args) => mapping::map(map_args),
     }
 }
