@@ -12,6 +12,9 @@ pub mod plot;
 pub mod huber;
 pub mod summary;
 
+#[path = "assign-qualities.rs"]
+pub mod assign_qualities;
+
 #[cfg(target_arch = "x86_64")]
 pub mod avx2_seeding;
 
